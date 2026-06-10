@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { verifyPin } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
-  const pin = req.headers.get("x-admin-pin");
-  const expected = process.env.ADMIN_PIN;
-  if (!expected || pin !== expected) {
+  if (!(await verifyPin(req.headers.get("x-admin-pin")))) {
     return NextResponse.json({ error: "Ongeldige PIN" }, { status: 401 });
   }
   const supabase = supabaseAdmin();

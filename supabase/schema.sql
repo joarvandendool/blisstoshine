@@ -30,6 +30,16 @@ create table if not exists public.settings (
 insert into public.settings (id) values (1)
 on conflict (id) do nothing;
 
+-- Admin/vrijwilligers-PIN (alternatief voor ADMIN_PIN env var).
+-- Bewust een aparte tabel zonder public select-policy, zodat anon de
+-- pin NIET kan uitlezen (settings is wel publiek leesbaar).
+create table if not exists public.admin_config (
+  id          integer primary key default 1,
+  pin         text not null,
+  updated_at  timestamptz not null default now(),
+  constraint admin_config_singleton check (id = 1)
+);
+
 -- ============================================================
 -- REALTIME inschakelen op donations
 -- ============================================================
@@ -38,8 +48,11 @@ alter publication supabase_realtime add table public.donations;
 -- ============================================================
 -- ROW LEVEL SECURITY
 -- ============================================================
-alter table public.donations enable row level security;
-alter table public.settings  enable row level security;
+alter table public.donations    enable row level security;
+alter table public.settings     enable row level security;
+alter table public.admin_config enable row level security;
+-- admin_config krijgt bewust GEEN select-policy: alleen de service_role
+-- (server-side API routes) kan de pin lezen.
 
 -- Iedereen mag donations lezen (display + invoer-lijst)
 drop policy if exists "donations_select_all" on public.donations;

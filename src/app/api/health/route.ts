@@ -20,12 +20,14 @@ export async function GET() {
     reachable: boolean;
     donationsTable: string;
     settingsTable: string;
+    adminPin: string;
     donationCount: number | null;
     totalCents: number | null;
   } = {
     reachable: false,
     donationsTable: "onbekend",
     settingsTable: "onbekend",
+    adminPin: "onbekend",
     donationCount: null,
     totalCents: null,
   };
@@ -56,6 +58,18 @@ export async function GET() {
 
       const setRes = await sb.from("settings").select("id").limit(1);
       db.settingsTable = setRes.error ? `fout: ${setRes.error.message}` : "ok";
+
+      // admin-PIN kan in env var óf in admin_config tabel staan
+      if (env.ADMIN_PIN) {
+        db.adminPin = "via env var";
+      } else {
+        const pinRes = await sb.from("admin_config").select("id").limit(1);
+        db.adminPin = pinRes.error
+          ? `niet ingesteld (${pinRes.error.message})`
+          : pinRes.data && pinRes.data.length > 0
+            ? "via database"
+            : "niet ingesteld";
+      }
     } catch (e) {
       db.donationsTable = `verbinding mislukt: ${
         e instanceof Error ? e.message : String(e)
@@ -66,11 +80,13 @@ export async function GET() {
     db.settingsTable = "supabase env vars ontbreken";
   }
 
+  const pinReady = db.adminPin === "via env var" || db.adminPin === "via database";
+
   const ready =
     env.NEXT_PUBLIC_SUPABASE_URL &&
     env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
     env.SUPABASE_SERVICE_ROLE_KEY &&
-    env.ADMIN_PIN &&
+    pinReady &&
     db.donationsTable === "ok" &&
     db.settingsTable === "ok";
 
