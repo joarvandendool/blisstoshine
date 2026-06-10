@@ -246,10 +246,8 @@ export default function DisplayPage() {
             <p className="uppercase tracking-[0.5em] text-base text-blissi-geel mb-2 anim-float">
               ✨ samen opgehaald ✨
             </p>
-            <div className="anim-count-pop" key={total}>
-              <div className="text-[8.5rem] lg:text-[12rem] xl:text-[14rem] font-bold leading-none tabular glow-text shimmer-text">
-                <CountUp value={total} format={(n) => formatEuro(n)} />
-              </div>
+            <div className="text-[8.5rem] lg:text-[12rem] xl:text-[14rem] font-bold leading-none tabular glow-text shimmer-text">
+              <CountUp value={total} format={(n) => formatEuro(n)} />
             </div>
             <p className="text-2xl lg:text-3xl mt-2 text-white/90">
               op weg naar <span className="font-bold text-blissi-geel">{formatEuro(goalCents)}</span>
