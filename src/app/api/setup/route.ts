@@ -71,6 +71,11 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Ongeldige token" }, { status: 401 });
   }
 
+  // Supabase's directe DB-host gebruikt een eigen CA die Node niet standaard
+  // vertrouwt ("self-signed certificate in certificate chain"). Voor deze
+  // eenmalige, geïsoleerde setup-lambda zetten we TLS-verificatie uit.
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
   const conn = pickConnString();
   if (!conn) {
     const seen = [
