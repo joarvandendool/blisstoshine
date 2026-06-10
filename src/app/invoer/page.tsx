@@ -5,6 +5,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { formatEuro, parseEuroInput, timeAgo } from "@/lib/format";
 import type { Donation } from "@/lib/types";
+import { SunMark } from "@/components/Logo";
 
 type Stage = "form" | "confirm" | "saving" | "saved" | "error";
 
@@ -124,9 +125,12 @@ export default function InvoerPage() {
           <Link href="/" className="text-staal hover:underline text-sm">
             ← Home
           </Link>
-          <p className="text-xs uppercase tracking-widest text-framboos font-semibold">
-            Donatie invoeren
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-xs uppercase tracking-widest text-framboos font-semibold">
+              Bliss to Shine · invoer
+            </p>
+            <SunMark size={32} />
+          </div>
         </header>
 
         {/* === FORMULIER === */}
