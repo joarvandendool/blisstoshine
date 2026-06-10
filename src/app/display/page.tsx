@@ -13,23 +13,22 @@ import { FestiveBackdrop } from "@/components/FestiveBackdrop";
 import { LogoLockup } from "@/components/Logo";
 import { FloatingDonations } from "@/components/FloatingDonations";
 import { MilestoneOverlay } from "@/components/MilestoneOverlay";
-import { PhotoCollage } from "@/components/PhotoCollage";
+import { VideoLoop } from "@/components/VideoLoop";
+import { InstagramPanel } from "@/components/InstagramPanel";
 
 const DEFAULT_GOAL = Number(process.env.NEXT_PUBLIC_GOAL_CENTS ?? 1_000_000);
 const QR_URL =
   process.env.NEXT_PUBLIC_QR_TARGET_URL ??
   "https://blisstoshine.nl/steun-ons/herinneringen/";
 const MILESTONES = [25, 50, 75, 100];
+const nf = new Intl.NumberFormat("nl-NL");
 
 const DEMO_NAMES = [
   "Anna", "Tom", "Sophie", "Lars", "Emma", "Daan", "Lotte", "Sem",
   "Julia", "Finn", "Noa", "Bram", "Eva", "Lucas", "Fleur", "Familie de Vries",
 ];
 const DEMO_AMOUNTS = [500, 1000, 1000, 2500, 2500, 5000, 5000, 10000, 25000];
-
-function randomOf<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
+const randomOf = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
 export default function DisplayPage() {
   const [donations, setDonations] = useState<Donation[]>([]);
@@ -48,6 +47,10 @@ export default function DisplayPage() {
   const [floatName, setFloatName] = useState("Anoniem");
   const [floatAmount, setFloatAmount] = useState(0);
 
+  // instagram-volger viering
+  const prevFollowersRef = useRef<number | null>(null);
+  const [followerToast, setFollowerToast] = useState<number | null>(null);
+
   const triggerNewDonation = useCallback(
     (name: string, amountCents: number) => {
       setFloatName(name);
@@ -59,7 +62,26 @@ export default function DisplayPage() {
     [muted]
   );
 
-  // Detecteer ?demo=1 na mount (geen Suspense nodig)
+  const celebrateFollower = useCallback(
+    (count: number) => {
+      setFollowerToast(count);
+      confettiBurst("big");
+      if (!muted) playMilestone(50);
+      setTimeout(() => setFollowerToast(null), 5500);
+    },
+    [muted]
+  );
+
+  const handleFollowers = useCallback(
+    (count: number) => {
+      const prev = prevFollowersRef.current;
+      prevFollowersRef.current = count;
+      if (prev != null && count > prev) celebrateFollower(count);
+    },
+    [celebrateFollower]
+  );
+
+  // ?demo=1 detecteren
   useEffect(() => {
     if (typeof window !== "undefined") {
       setDemo(new URLSearchParams(window.location.search).has("demo"));
@@ -116,7 +138,10 @@ export default function DisplayPage() {
             curr.some((x) => x.id === d.id) ? curr : [d, ...curr].slice(0, 300)
           );
           if (readyRef.current) {
-            triggerNewDonation(d.show_on_display ? d.first_name || "Anoniem" : "Anoniem", d.amount_cents);
+            triggerNewDonation(
+              d.show_on_display ? d.first_name || "Anoniem" : "Anoniem",
+              d.amount_cents
+            );
           }
         }
       )
@@ -142,7 +167,6 @@ export default function DisplayPage() {
     if (!demo) return;
     readyRef.current = false;
     setGoalCents(DEFAULT_GOAL);
-    // begin met een paar donaties
     const seed: Donation[] = Array.from({ length: 6 }).map((_, i) => ({
       id: `seed-${i}`,
       first_name: randomOf(DEMO_NAMES),
@@ -155,24 +179,38 @@ export default function DisplayPage() {
     setDonations(seed);
     readyRef.current = true;
 
-    const iv = setInterval(() => {
+    const ivDon = setInterval(() => {
       const name = randomOf(DEMO_NAMES);
       const amount = randomOf(DEMO_AMOUNTS);
-      const d: Donation = {
-        id: `demo-${Date.now()}`,
-        first_name: name,
-        amount_cents: amount,
-        message: null,
-        show_on_display: true,
-        source: "invoer",
-        created_at: new Date().toISOString(),
-      };
-      setDonations((curr) => [d, ...curr].slice(0, 300));
+      setDonations((curr) =>
+        [
+          {
+            id: `demo-${Date.now()}`,
+            first_name: name,
+            amount_cents: amount,
+            message: null,
+            show_on_display: true,
+            source: "invoer" as const,
+            created_at: new Date().toISOString(),
+          },
+          ...curr,
+        ].slice(0, 300)
+      );
       triggerNewDonation(name, amount);
     }, 3500);
 
-    return () => clearInterval(iv);
-  }, [demo, triggerNewDonation]);
+    // fake nieuwe volgers voor de preview
+    let fakeFollowers = 2480;
+    const ivFol = setInterval(() => {
+      fakeFollowers += 1;
+      celebrateFollower(fakeFollowers);
+    }, 11000);
+
+    return () => {
+      clearInterval(ivDon);
+      clearInterval(ivFol);
+    };
+  }, [demo, triggerNewDonation, celebrateFollower]);
 
   const total = useMemo(
     () => donations.reduce((s, d) => s + d.amount_cents, 0),
@@ -181,7 +219,6 @@ export default function DisplayPage() {
   const donorCount = donations.length;
   const percent = Math.min(100, (total / goalCents) * 100);
 
-  // Mijlpaal-detectie
   useEffect(() => {
     for (const m of MILESTONES) {
       if (percent >= m && lastMilestoneRef.current < m) {
@@ -207,6 +244,21 @@ export default function DisplayPage() {
       <FloatingDonations signal={floatSignal} name={floatName} amountCents={floatAmount} />
       <MilestoneOverlay milestone={milestoneHit} totalCents={total} />
 
+      {/* Nieuwe-volger toast */}
+      {followerToast != null && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-40 anim-pop">
+          <div className="glass rounded-full px-7 py-3 flex items-center gap-3">
+            <span className="text-3xl">💜</span>
+            <div className="leading-tight">
+              <p className="font-bold text-white">Nieuwe volger op Instagram!</p>
+              <p className="text-sm text-white/80">
+                {nf.format(followerToast)} mensen volgen ons al
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Status / demo / mute */}
       <div className="absolute top-6 right-6 z-20 flex items-center gap-3">
         {demo && (
@@ -215,9 +267,7 @@ export default function DisplayPage() {
           </span>
         )}
         {error && (
-          <span className="bg-red-500/90 px-3 py-1 rounded-full text-xs">
-            Verbinding hapert…
-          </span>
+          <span className="bg-red-500/90 px-3 py-1 rounded-full text-xs">Verbinding hapert…</span>
         )}
         <button
           onClick={toggleMute}
@@ -228,35 +278,34 @@ export default function DisplayPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-12 gap-6 p-8 lg:p-12 min-h-screen">
+      <div className="grid grid-cols-12 gap-6 p-6 lg:p-10 min-h-screen">
         {/* HOOFD */}
-        <section className="col-span-12 lg:col-span-9 flex flex-col">
-          <header className="flex items-center justify-between mb-4">
+        <section className="col-span-12 lg:col-span-8 flex flex-col">
+          <header className="flex items-center justify-between mb-2">
             <LogoLockup />
             <div className="glass rounded-3xl px-6 py-3 text-center anim-float">
-              <p className="text-xs uppercase tracking-widest text-white/80">
-                Donateurs
-              </p>
-              <p className="text-5xl font-bold tabular">{donorCount}</p>
+              <p className="text-xs uppercase tracking-widest text-white/80">Donateurs</p>
+              <p className="text-4xl lg:text-5xl font-bold tabular">{donorCount}</p>
             </div>
           </header>
 
           {/* MEGA COUNTER */}
-          <div className="flex-1 flex flex-col justify-center items-center text-center py-4">
-            <p className="uppercase tracking-[0.5em] text-base text-blissi-geel mb-2 anim-float">
+          <div className="flex-1 flex flex-col justify-center items-center text-center py-2">
+            <p className="uppercase tracking-[0.5em] text-base text-blissi-geel mb-1 anim-float">
               ✨ samen opgehaald ✨
             </p>
-            <div className="text-[8.5rem] lg:text-[12rem] xl:text-[14rem] font-bold leading-none tabular glow-text shimmer-text">
+            <div className="text-[6.5rem] lg:text-[9rem] xl:text-[11rem] font-bold leading-none tabular glow-text shimmer-text">
               <CountUp value={total} format={(n) => formatEuro(n)} />
             </div>
-            <p className="text-2xl lg:text-3xl mt-2 text-white/90">
-              op weg naar <span className="font-bold text-blissi-geel">{formatEuro(goalCents)}</span>
+            <p className="text-2xl lg:text-3xl mt-1 text-white/90">
+              op weg naar{" "}
+              <span className="font-bold text-blissi-geel">{formatEuro(goalCents)}</span>
             </p>
 
-            {/* PROGRESS BAR met zon-rijder */}
-            <div className="w-full max-w-5xl mt-8">
+            {/* PROGRESS BAR */}
+            <div className="w-full max-w-4xl mt-6">
               <div className="relative">
-                <div className="h-12 glass rounded-full overflow-hidden">
+                <div className="h-11 glass rounded-full overflow-hidden">
                   <div
                     className="h-full rounded-full bg-gradient-to-r from-blissi-geel via-zalm to-blissi-roze transition-all duration-1000 ease-out relative"
                     style={{ width: `${Math.max(percent, 2)}%` }}
@@ -264,59 +313,37 @@ export default function DisplayPage() {
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent animate-shimmer" />
                   </div>
                 </div>
-                {/* milestone-vlaggetjes */}
                 {MILESTONES.slice(0, 3).map((m) => (
-                  <div
-                    key={m}
-                    className="absolute top-0 h-12 flex items-center"
-                    style={{ left: `${m}%` }}
-                  >
-                    <div
-                      className={`w-1 h-8 rounded-full ${
-                        percent >= m ? "bg-white" : "bg-white/40"
-                      }`}
-                    />
+                  <div key={m} className="absolute top-0 h-11 flex items-center" style={{ left: `${m}%` }}>
+                    <div className={`w-1 h-7 rounded-full ${percent >= m ? "bg-white" : "bg-white/40"}`} />
                   </div>
                 ))}
               </div>
-              <div className="flex justify-between text-base mt-3 px-1">
+              <div className="flex justify-between text-base mt-2 px-1">
                 {MILESTONES.map((m) => (
-                  <span
-                    key={m}
-                    className={
-                      percent >= m
-                        ? "font-bold text-blissi-geel"
-                        : "text-white/50"
-                    }
-                  >
+                  <span key={m} className={percent >= m ? "font-bold text-blissi-geel" : "text-white/50"}>
                     {percent >= m ? "★ " : ""}
                     {m}%
                   </span>
                 ))}
               </div>
-              <p className="text-center text-2xl mt-4">
-                <span className="font-bold tabular text-blissi-geel">
-                  {percent.toFixed(1)}%
-                </span>{" "}
-                van het doel gehaald
-                {reached > 0 && (
-                  <span className="ml-3 text-white">· {reached}% mijlpaal ✨</span>
-                )}
+              <p className="text-center text-xl mt-3">
+                <span className="font-bold tabular text-blissi-geel">{percent.toFixed(1)}%</span> van het
+                doel gehaald
+                {reached > 0 && <span className="ml-3 text-white">· {reached}% mijlpaal ✨</span>}
               </p>
             </div>
           </div>
 
-          {/* TICKER (doorlopend) */}
-          <div className="mt-6 glass rounded-2xl py-4 overflow-hidden">
+          {/* TICKER */}
+          <div className="mt-4 glass rounded-2xl py-3 overflow-hidden">
             <div className="flex items-center gap-3 px-4">
               <span className="shrink-0 uppercase tracking-widest text-xs text-blissi-geel font-bold">
                 Zojuist ❤
               </span>
               <div className="overflow-hidden flex-1">
                 {ticker.length === 0 ? (
-                  <p className="text-white/70">
-                    Wees jij de eerste die tekent — scan de code!
-                  </p>
+                  <p className="text-white/70">Wees jij de eerste die tekent — scan de code!</p>
                 ) : (
                   <div className="marquee-track gap-10">
                     {[...ticker, ...ticker].map((d, i) => (
@@ -336,22 +363,23 @@ export default function DisplayPage() {
           </div>
         </section>
 
-        {/* ZIJBALK: QR + foto's */}
-        <aside className="col-span-12 lg:col-span-3 flex flex-col items-center justify-center gap-6">
-          <div className="glass rounded-3xl p-6 flex flex-col items-center gap-4 anim-float">
-            <p className="text-center text-xl font-bold">
-              Ook doneren?
-            </p>
-            <QrCode url={QR_URL} size={240} />
-            <p className="text-center text-sm text-white/85">
-              Scan & teken mee<br />of kom langs onze stand
-            </p>
+        {/* RECHTERKOLOM: video + instagram + doneer-QR */}
+        <aside className="col-span-12 lg:col-span-4 flex flex-col gap-4">
+          <VideoLoop />
+          <InstagramPanel onFollowers={handleFollowers} />
+          <div className="glass rounded-3xl p-4 flex items-center gap-4">
+            <div className="bg-white rounded-2xl p-2 shrink-0">
+              <QrCode url={QR_URL} size={104} />
+            </div>
+            <div>
+              <p className="text-lg font-bold">Ook doneren?</p>
+              <p className="text-sm text-white/85">Scan & teken mee, of kom langs onze stand ✨</p>
+            </div>
           </div>
-          <PhotoCollage />
         </aside>
 
         {/* SPONSORS */}
-        <footer className="col-span-12 flex items-center justify-center pt-2">
+        <footer className="col-span-12 flex items-center justify-center">
           <SponsorCarousel />
         </footer>
       </div>

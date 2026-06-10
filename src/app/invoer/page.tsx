@@ -5,7 +5,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { formatEuro, parseEuroInput, timeAgo } from "@/lib/format";
 import type { Donation } from "@/lib/types";
-import { SunMark } from "@/components/Logo";
+import { BrandLogo } from "@/components/Logo";
 
 type Stage = "form" | "confirm" | "saving" | "saved" | "error";
 
@@ -61,6 +61,14 @@ export default function InvoerPage() {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  // Na een geslaagde donatie kort de bevestiging tonen en dan automatisch
+  // terug naar het lege invoerscherm — klaar voor de volgende donateur.
+  useEffect(() => {
+    if (stage !== "saved") return;
+    const t = setTimeout(() => setStage("form"), 2500);
+    return () => clearTimeout(t);
+  }, [stage]);
 
   const cents = parseEuroInput(amount);
 
@@ -125,12 +133,7 @@ export default function InvoerPage() {
           <Link href="/" className="text-staal hover:underline text-sm">
             ← Home
           </Link>
-          <div className="flex items-center gap-2">
-            <p className="text-xs uppercase tracking-widest text-framboos font-semibold">
-              Bliss to Shine · invoer
-            </p>
-            <SunMark size={32} />
-          </div>
+          <BrandLogo className="h-8" />
         </header>
 
         {/* === FORMULIER === */}
@@ -270,8 +273,11 @@ export default function InvoerPage() {
               onClick={() => setStage("form")}
               className="w-full bg-staal hover:bg-staal-dark text-white rounded-2xl py-4 font-bold mt-2"
             >
-              Nog een donatie invoeren
+              Direct nog een donatie →
             </button>
+            <p className="text-xs text-staal-dark/70">
+              Je gaat zo automatisch terug naar het invoerscherm…
+            </p>
           </section>
         )}
 

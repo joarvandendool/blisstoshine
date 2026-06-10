@@ -1,55 +1,43 @@
-// Gestileerd "Bliss to Shine" logo-lockup met een stralende zon.
-// Vervang dit door het echte logo zodra je het in /public/logo.svg zet
-// (zie LogoImage hieronder voor automatische fallback).
+// Officieel Bliss to Shine logo. Standaard geladen vanaf de eigen site;
+// te overschrijven met NEXT_PUBLIC_LOGO_URL of door /public/logo.png te
+// vullen en de URL hieronder op "/logo.png" te zetten.
+export const LOGO_URL =
+  process.env.NEXT_PUBLIC_LOGO_URL ??
+  "https://blisstoshine.nl/wp-content/uploads/bliss_to_shine_logo.png";
 
-export function SunMark({ size = 64 }: { size?: number }) {
-  const rays = Array.from({ length: 12 });
+// Logo op een witte, afgeronde kaart — goed leesbaar op de donkere,
+// kleurrijke achtergrond van het grote scherm.
+export function LogoCard({
+  className = "",
+  imgClass = "h-12 lg:h-16",
+}: {
+  className?: string;
+  imgClass?: string;
+}) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 100 100"
-      className="anim-glow"
-      aria-hidden
+    <div
+      className={`bg-white rounded-2xl px-5 py-3 shadow-lg inline-flex items-center ${className}`}
     >
-      <g className="anim-spin-slow" style={{ transformOrigin: "50px 50px" }}>
-        {rays.map((_, i) => (
-          <rect
-            key={i}
-            x="48"
-            y="4"
-            width="4"
-            height="16"
-            rx="2"
-            fill="#FFEF80"
-            transform={`rotate(${i * 30} 50 50)`}
-          />
-        ))}
-      </g>
-      <circle cx="50" cy="50" r="24" fill="#FFEF80" />
-      <circle cx="50" cy="50" r="24" fill="url(#sunGrad)" />
-      <defs>
-        <radialGradient id="sunGrad" cx="0.4" cy="0.35" r="0.8">
-          <stop offset="0%" stopColor="#FFF7C2" />
-          <stop offset="100%" stopColor="#F0947F" />
-        </radialGradient>
-      </defs>
-    </svg>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={LOGO_URL} alt="Bliss to Shine" className={`${imgClass} w-auto object-contain`} />
+    </div>
   );
 }
 
+// Kale logo-afbeelding (voor lichte achtergronden, bv. het invoerscherm).
+export function BrandLogo({ className = "h-8" }: { className?: string }) {
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={LOGO_URL} alt="Bliss to Shine" className={`${className} w-auto object-contain`} />;
+}
+
+// Logo-kaart + pay-off, voor koppen op donkere achtergrond.
 export function LogoLockup() {
   return (
     <div className="flex items-center gap-4">
-      <SunMark size={72} />
-      <div className="leading-none">
-        <p className="text-3xl lg:text-4xl font-bold text-white tracking-tight">
-          Bliss <span className="text-blissi-geel">to</span> Shine
-        </p>
-        <p className="text-white/80 text-sm lg:text-base mt-1 italic">
-          ook met kanker mag je stralen
-        </p>
-      </div>
+      <LogoCard imgClass="h-12 lg:h-16" />
+      <p className="text-white/90 text-sm lg:text-lg italic hidden sm:block">
+        ook met kanker mag je stralen
+      </p>
     </div>
   );
 }
