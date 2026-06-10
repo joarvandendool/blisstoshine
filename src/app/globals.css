@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --framboos: #b23560;
+  --framboos-light: #b93d62;
+  --koraal: #d66871;
+  --zalm: #f0947f;
+  --staal: #1a5380;
+  --staal-dark: #103655;
+}
+
+html,
+body {
+  background: #fff;
+  color: #1a1a1a;
+  -webkit-font-smoothing: antialiased;
+}
+
+.hero-gradient {
+  background: linear-gradient(135deg, #b93d62 0%, #d66871 50%, #f0947f 100%);
+}
+
+.shimmer-text {
+  background: linear-gradient(
+    90deg,
+    var(--framboos) 0%,
+    var(--koraal) 25%,
+    #ffd27a 50%,
+    var(--koraal) 75%,
+    var(--framboos) 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 3s linear infinite;
+}
+
+/* SVG-vrije wave als border tussen secties */
+.wave-bottom {
+  -webkit-mask-image: linear-gradient(to bottom, #000 80%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 80%, transparent 100%);
+}
+
+/* Voorkom overflow op grote getallen op kleine schermen */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
