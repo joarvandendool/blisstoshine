@@ -93,9 +93,15 @@ export async function GET(req: Request) {
     );
   }
 
+  // Strip sslmode uit de connection string zodat ons ssl-object niet door
+  // pg's connection-string parser wordt overschreven.
+  const connStr = conn.url
+    .replace(/([?&])sslmode=[^&]*/i, "$1")
+    .replace(/[?&]$/, "");
+
   const steps: Step[] = [];
   const client = new Client({
-    connectionString: conn.url,
+    connectionString: connStr,
     ssl: { rejectUnauthorized: false },
   });
 

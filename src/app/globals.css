@@ -9,27 +9,46 @@
   --zalm: #f0947f;
   --staal: #1a5380;
   --staal-dark: #103655;
+  --geel: #ffef80;
+  --roze: #dc88b9;
+  --groen: #b6d180;
+  --blauw: #75aae0;
 }
 
 html,
 body {
-  background: #fff;
+  background: #2a0f1d;
   color: #1a1a1a;
   -webkit-font-smoothing: antialiased;
 }
 
+/* ============================================================
+   ACHTERGRONDEN
+   ============================================================ */
 .hero-gradient {
   background: linear-gradient(135deg, #b93d62 0%, #d66871 50%, #f0947f 100%);
 }
 
+/* Diepe, warme festival-achtergrond voor het grote scherm */
+.festival-bg {
+  background:
+    radial-gradient(1200px 800px at 15% 10%, rgba(220, 136, 185, 0.35), transparent 60%),
+    radial-gradient(1000px 700px at 85% 20%, rgba(240, 148, 127, 0.35), transparent 60%),
+    radial-gradient(1100px 900px at 50% 100%, rgba(117, 170, 224, 0.28), transparent 60%),
+    linear-gradient(160deg, #7a1f3d 0%, #b23560 45%, #d66871 100%);
+}
+
+/* ============================================================
+   TEKST-EFFECTEN
+   ============================================================ */
 .shimmer-text {
   background: linear-gradient(
     90deg,
-    var(--framboos) 0%,
-    var(--koraal) 25%,
-    #ffd27a 50%,
-    var(--koraal) 75%,
-    var(--framboos) 100%
+    #fff 0%,
+    #ffef80 25%,
+    #fff 50%,
+    #ffd27a 75%,
+    #fff 100%
   );
   background-size: 200% auto;
   -webkit-background-clip: text;
@@ -38,13 +57,129 @@ body {
   animation: shimmer 3s linear infinite;
 }
 
-/* SVG-vrije wave als border tussen secties */
-.wave-bottom {
-  -webkit-mask-image: linear-gradient(to bottom, #000 80%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 80%, transparent 100%);
+.glow-text {
+  text-shadow:
+    0 0 20px rgba(255, 239, 128, 0.55),
+    0 0 60px rgba(255, 200, 120, 0.35),
+    0 6px 30px rgba(0, 0, 0, 0.35);
 }
 
-/* Voorkom overflow op grote getallen op kleine schermen */
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* Glas-effect kaarten */
+.glass {
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow:
+    0 10px 40px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+/* ============================================================
+   KEYFRAMES
+   ============================================================ */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(4%, -3%) scale(1.08); }
+  66% { transform: translate(-3%, 4%) scale(0.95); }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes spin-slower {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(-360deg); }
+}
+
+@keyframes twinkle {
+  0%, 100% { opacity: 0.15; transform: scale(0.6); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-16px); }
+}
+
+@keyframes rise-fade {
+  0% { transform: translateY(0) scale(0.7); opacity: 0; }
+  15% { transform: translateY(-10px) scale(1.05); opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateY(-180px) scale(1); opacity: 0; }
+}
+
+@keyframes pop-in {
+  0% { transform: scale(0.5); opacity: 0; }
+  60% { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@keyframes count-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { filter: drop-shadow(0 0 25px rgba(255, 239, 128, 0.45)); }
+  50% { filter: drop-shadow(0 0 55px rgba(255, 239, 128, 0.8)); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes zoom-bounce {
+  0% { transform: scale(0.3) rotate(-8deg); opacity: 0; }
+  50% { transform: scale(1.15) rotate(3deg); opacity: 1; }
+  70% { transform: scale(0.95) rotate(-1deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+/* ============================================================
+   ANIMATIE-UTILITIES
+   ============================================================ */
+.anim-drift { animation: drift 18s ease-in-out infinite; }
+.anim-drift-slow { animation: drift 26s ease-in-out infinite; }
+.anim-spin-slow { animation: spin-slow 60s linear infinite; }
+.anim-spin-slower { animation: spin-slower 90s linear infinite; }
+.anim-twinkle { animation: twinkle 3s ease-in-out infinite; }
+.anim-float { animation: float-y 6s ease-in-out infinite; }
+.anim-rise { animation: rise-fade 2.6s ease-out forwards; }
+.anim-pop { animation: pop-in 0.5s ease-out both; }
+.anim-count-pop { animation: count-pop 0.6s ease-out; }
+.anim-glow { animation: glow-pulse 3.5s ease-in-out infinite; }
+.anim-fade-in { animation: fade-in 0.5s ease-out both; }
+.anim-zoom-bounce { animation: zoom-bounce 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+.marquee-track {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: marquee 40s linear infinite;
+}
+.marquee-track:hover { animation-play-state: paused; }
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-drift, .anim-drift-slow, .anim-spin-slow, .anim-spin-slower,
+  .anim-twinkle, .anim-float, .anim-glow, .marquee-track {
+    animation: none !important;
+  }
 }
