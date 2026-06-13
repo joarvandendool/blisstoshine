@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import confetti from "canvas-confetti";
 
 const BLISSI_COLORS = [
-  "#B23560",
+  "#B3315F",
   "#D66871",
   "#F0947F",
   "#DC88B9",

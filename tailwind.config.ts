@@ -6,7 +6,7 @@ const config: Config = {
     extend: {
       colors: {
         framboos: {
-          DEFAULT: "#B23560",
+          DEFAULT: "#B3315F",
           dark: "#8C2549",
           light: "#B93D62",
         },

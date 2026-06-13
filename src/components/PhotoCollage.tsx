@@ -11,7 +11,7 @@ type Photo = { src: string; alt: string };
 const PHOTOS: Photo[] = [];
 
 const FALLBACK = [
-  { emoji: "🌻", word: "samen", from: "#DC88B9", to: "#B23560" },
+  { emoji: "🌻", word: "samen", from: "#DC88B9", to: "#B3315F" },
   { emoji: "💛", word: "stralen", from: "#FFEF80", to: "#F0947F" },
   { emoji: "🤝", word: "warmte", from: "#75AAE0", to: "#1A5380" },
   { emoji: "🎈", word: "hoop", from: "#B6D180", to: "#75AAE0" },

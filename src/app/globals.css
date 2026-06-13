@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  --framboos: #b23560;
+  --framboos: #b3315f;
   --framboos-light: #b93d62;
   --koraal: #d66871;
   --zalm: #f0947f;
@@ -35,7 +35,7 @@ body {
     radial-gradient(1200px 800px at 15% 10%, rgba(220, 136, 185, 0.35), transparent 60%),
     radial-gradient(1000px 700px at 85% 20%, rgba(240, 148, 127, 0.35), transparent 60%),
     radial-gradient(1100px 900px at 50% 100%, rgba(117, 170, 224, 0.28), transparent 60%),
-    linear-gradient(160deg, #7a1f3d 0%, #b23560 45%, #d66871 100%);
+    linear-gradient(160deg, #7a1f3d 0%, #b3315f 45%, #d66871 100%);
 }
 
 /* ============================================================
