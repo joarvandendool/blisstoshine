@@ -17,7 +17,7 @@
 
 html,
 body {
-  background: #2a0f1d;
+  background: #b3315f;
   color: #1a1a1a;
   -webkit-font-smoothing: antialiased;
 }
@@ -29,13 +29,15 @@ body {
   background: linear-gradient(135deg, #b93d62 0%, #d66871 50%, #f0947f 100%);
 }
 
-/* Diepe, warme festival-achtergrond voor het grote scherm */
+/* Diepe, warme festival-achtergrond voor het grote scherm.
+   Framboos #B3315F is de dominante huisstijlkleur; de overlays geven
+   alleen subtiele glans en diepte. */
 .festival-bg {
   background:
-    radial-gradient(1200px 800px at 15% 10%, rgba(220, 136, 185, 0.35), transparent 60%),
-    radial-gradient(1000px 700px at 85% 20%, rgba(240, 148, 127, 0.35), transparent 60%),
-    radial-gradient(1100px 900px at 50% 100%, rgba(117, 170, 224, 0.28), transparent 60%),
-    linear-gradient(160deg, #7a1f3d 0%, #b3315f 45%, #d66871 100%);
+    radial-gradient(1200px 800px at 15% 10%, rgba(220, 136, 185, 0.28), transparent 60%),
+    radial-gradient(1000px 700px at 85% 20%, rgba(240, 148, 127, 0.22), transparent 60%),
+    radial-gradient(1100px 900px at 50% 100%, rgba(255, 239, 128, 0.12), transparent 60%),
+    linear-gradient(160deg, #8c2549 0%, #b3315f 50%, #b3315f 100%);
 }
 
 /* ============================================================
