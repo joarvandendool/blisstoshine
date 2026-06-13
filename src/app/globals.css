@@ -43,27 +43,41 @@ body {
 /* ============================================================
    TEKST-EFFECTEN
    ============================================================ */
+/* Witte tekst met subtiele beweging — laat het lichten zonder geel te kleuren */
 .shimmer-text {
   background: linear-gradient(
     90deg,
-    #fff 0%,
-    #ffef80 25%,
-    #fff 50%,
-    #ffd27a 75%,
-    #fff 100%
+    #ffffff 0%,
+    #ffe8f0 35%,
+    #ffffff 50%,
+    #ffe8f0 65%,
+    #ffffff 100%
   );
   background-size: 200% auto;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: shimmer 3s linear infinite;
+  animation: shimmer 3.5s linear infinite;
 }
 
+/* Framboos-glow rond witte letters: licht pink-roze halo's gestapeld,
+   gekoppeld aan een diepe framboos kern. Tilt de tekst los van de
+   framboos achtergrond zonder de huisstijl te breken. */
 .glow-text {
   text-shadow:
-    0 0 20px rgba(255, 239, 128, 0.55),
-    0 0 60px rgba(255, 200, 120, 0.35),
+    0 0 14px rgba(255, 255, 255, 0.85),
+    0 0 28px rgba(255, 180, 210, 0.85),
+    0 0 60px rgba(220, 136, 185, 0.75),
+    0 0 110px rgba(179, 49, 95, 0.7),
     0 6px 30px rgba(0, 0, 0, 0.35);
+}
+
+/* Iets zachtere variant voor secundaire tekst */
+.glow-text-soft {
+  text-shadow:
+    0 0 10px rgba(255, 255, 255, 0.5),
+    0 0 24px rgba(220, 136, 185, 0.55),
+    0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 .tabular {
