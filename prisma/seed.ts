@@ -1204,6 +1204,104 @@ async function main(): Promise<void> {
 
   console.log(`Pipeline-historie aangemaakt (${events.length} analytics-events).`);
 
+  // 8b. Praktijkbezetting: vier teamleden met vaste roosters, één geplande
+  // afwezigheid en het gewenste minimum voor De Lindeboom. Idempotent:
+  // bestaande teamleden van deze locatie worden eerst verwijderd.
+  const teamRooster = (
+    spec: Partial<Record<Weekday, Daypart[]>>,
+  ): Record<Weekday, Record<Daypart, boolean>> => {
+    const uit = {} as Record<Weekday, Record<Daypart, boolean>>;
+    for (const dag of WEEKDAYS) {
+      uit[dag] = { ochtend: false, middag: false, avond: false };
+      for (const dagdeel of spec[dag] ?? []) uit[dag][dagdeel] = true;
+    }
+    return uit;
+  };
+
+  // Geplande vakantie van Jeroen: over 10 dagen, twee weken lang — binnen het
+  // vooruitblikvenster van 4 weken, zodat "tekort verwacht" zichtbaar wordt.
+  const nuVoorTeam = new Date();
+  const jeroenAfwezigVan = new Date(nuVoorTeam.getTime() + 10 * DAG_MS);
+  const jeroenAfwezigTot = new Date(nuVoorTeam.getTime() + 24 * DAG_MS);
+
+  await prisma.teamMember.deleteMany({ where: { locationId: lindeboomLocatie.id } });
+  await prisma.teamMember.createMany({
+    data: [
+      {
+        locationId: lindeboomLocatie.id,
+        name: "Esther Willems",
+        role: "tandarts",
+        schedule: alsJson(
+          teamRooster({
+            ma: ["ochtend", "middag"],
+            di: ["ochtend", "middag"],
+            wo: ["ochtend", "middag"],
+            do: ["ochtend", "middag"],
+          }),
+        ),
+      },
+      {
+        locationId: lindeboomLocatie.id,
+        name: "Jeroen Kuipers",
+        role: "tandarts",
+        schedule: alsJson(
+          teamRooster({
+            do: ["ochtend", "middag"],
+            vr: ["ochtend", "middag"],
+          }),
+        ),
+        absentFrom: jeroenAfwezigVan,
+        absentUntil: jeroenAfwezigTot,
+        note: "Vakantie gepland — twee weken afwezig.",
+      },
+      {
+        locationId: lindeboomLocatie.id,
+        name: "Anouk Peters",
+        role: "mondhygienist",
+        schedule: alsJson(
+          teamRooster({
+            ma: ["ochtend"],
+            di: ["ochtend", "middag"],
+            do: ["ochtend"],
+          }),
+        ),
+      },
+      {
+        locationId: lindeboomLocatie.id,
+        name: "Bas van Leeuwen",
+        role: "tandartsassistent",
+        schedule: alsJson(
+          teamRooster({
+            ma: ["ochtend", "middag"],
+            di: ["ochtend", "middag"],
+            wo: ["ochtend", "middag"],
+            do: ["ochtend", "middag"],
+            vr: ["ochtend", "middag"],
+          }),
+        ),
+      },
+    ],
+  });
+
+  // Gewenst minimum: twee teamleden per ochtend en middag op werkdagen.
+  const lindeboomMinimum = {} as Record<Weekday, Record<Daypart, number>>;
+  for (const dag of WEEKDAYS) {
+    const werkdag = dag !== "za" && dag !== "zo";
+    lindeboomMinimum[dag] = {
+      ochtend: werkdag ? 2 : 0,
+      middag: werkdag ? 2 : 0,
+      avond: 0,
+    };
+  }
+  await prisma.practiceLocation.update({
+    where: { id: lindeboomLocatie.id },
+    data: { staffingTarget: alsJson(lindeboomMinimum) },
+  });
+
+  console.log(
+    "Praktijkbezetting geseed: 4 teamleden, 1 geplande afwezigheid en het gewenste minimum voor De Lindeboom.",
+  );
+
   // 9. Overzicht van inloggegevens.
   console.log("");
   console.log("──────────────────────────────────────────────────────────────");
