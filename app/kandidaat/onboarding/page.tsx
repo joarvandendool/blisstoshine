@@ -37,7 +37,8 @@ function profielNaarWaarden(profiel: CandidateProfile): ProfielWaarden {
       : null,
     salaryMin: naarEuros(profiel.salaryMin),
     salaryMax: naarEuros(profiel.salaryMax),
-    hourlyRateMin: naarEuros(profiel.hourlyRateMin),
+    // omzetpercentage is al een geheel getal in procenten — geen conversie
+    revenueShareMin: profiel.revenueShareMin,
     equipmentExperience: profiel.equipmentExperience,
     techniquesWantsToLearn: profiel.techniquesWantsToLearn,
     softwareSkills: profiel.softwareSkills,
@@ -67,7 +68,7 @@ function beginWaarden(): ProfielWaarden {
     availableFrom: null,
     salaryMin: null,
     salaryMax: null,
-    hourlyRateMin: null,
+    revenueShareMin: null,
     equipmentExperience: [],
     techniquesWantsToLearn: [],
     softwareSkills: [],

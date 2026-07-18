@@ -5,6 +5,8 @@ import {
   ANALYTICS_EVENTS,
   AnalyticsEnvelopeSchema,
   CANDIDATE_FUNNEL_EVENTS,
+  COMMERCIAL_EVENTS,
+  ENGAGEMENT_EVENTS,
   PRACTICE_FUNNEL_EVENTS,
   isAnalyticsEventName,
 } from "@/domain/analytics";
@@ -43,18 +45,34 @@ describe("eventnamen", () => {
     ]);
   });
 
-  it("ANALYTICS_EVENTS bevat alle events van beide funnels, gededupliceerd", () => {
-    for (const naam of [...CANDIDATE_FUNNEL_EVENTS, ...PRACTICE_FUNNEL_EVENTS]) {
+  it("ANALYTICS_EVENTS bevat alle events van alle groepen, gededupliceerd", () => {
+    for (const naam of [
+      ...CANDIDATE_FUNNEL_EVENTS,
+      ...PRACTICE_FUNNEL_EVENTS,
+      ...COMMERCIAL_EVENTS,
+      ...ENGAGEMENT_EVENTS,
+    ]) {
       expect(ANALYTICS_EVENTS).toContain(naam);
     }
     // interview_scheduled staat in beide funnels en telt één keer
     expect(new Set(ANALYTICS_EVENTS).size).toBe(ANALYTICS_EVENTS.length);
     expect(ANALYTICS_EVENTS).toHaveLength(
-      CANDIDATE_FUNNEL_EVENTS.length + PRACTICE_FUNNEL_EVENTS.length - 1,
+      CANDIDATE_FUNNEL_EVENTS.length +
+        PRACTICE_FUNNEL_EVENTS.length +
+        COMMERCIAL_EVENTS.length +
+        ENGAGEMENT_EVENTS.length -
+        1,
     );
     expect(
       ANALYTICS_EVENTS.filter((naam) => naam === "interview_scheduled"),
     ).toHaveLength(1);
+  });
+
+  it("commerciële en engagement-events zijn aanwezig", () => {
+    expect(ANALYTICS_EVENTS).toContain("practice_activated");
+    expect(ANALYTICS_EVENTS).toContain("paywall_viewed");
+    expect(ANALYTICS_EVENTS).toContain("checkout_started");
+    expect(ANALYTICS_EVENTS).toContain("interview_confirmed");
   });
 });
 

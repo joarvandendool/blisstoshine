@@ -41,11 +41,42 @@ export const PRACTICE_FUNNEL_EVENTS = [
   "subscription_cancelled",
 ] as const;
 
+/** Commerciële lus: activatie, paywall, checkout en conversie (private beta). */
+export const COMMERCIAL_EVENTS = [
+  "practice_activated",
+  "paywall_viewed",
+  "plan_compared",
+  "trial_started",
+  "checkout_started",
+  "checkout_abandoned",
+] as const;
+
+/** Interactie na de match: reageren, plannen, feedback en bezetting. */
+export const ENGAGEMENT_EVENTS = [
+  "invitation_viewed",
+  "invitation_interested",
+  "invitation_declined",
+  "consent_granted",
+  "consent_revoked",
+  "interview_proposed",
+  "interview_confirmed",
+  "match_feedback_given",
+  "notification_sent",
+  "capacity_planner_viewed",
+  "capacity_gap_to_vacancy",
+] as const;
+
 export type CandidateFunnelEvent = (typeof CANDIDATE_FUNNEL_EVENTS)[number];
 export type PracticeFunnelEvent = (typeof PRACTICE_FUNNEL_EVENTS)[number];
+export type CommercialEvent = (typeof COMMERCIAL_EVENTS)[number];
+export type EngagementEvent = (typeof ENGAGEMENT_EVENTS)[number];
 
-/** Alle geldige eventnamen (union van beide funnels). */
-export type AnalyticsEventName = CandidateFunnelEvent | PracticeFunnelEvent;
+/** Alle geldige eventnamen (union van de funnels en de commerciële lus). */
+export type AnalyticsEventName =
+  | CandidateFunnelEvent
+  | PracticeFunnelEvent
+  | CommercialEvent
+  | EngagementEvent;
 
 /**
  * Alle eventnamen, gededupliceerd (interview_scheduled komt in beide funnels
@@ -56,6 +87,8 @@ export const ANALYTICS_EVENTS: readonly AnalyticsEventName[] = Object.freeze(
     new Set<AnalyticsEventName>([
       ...CANDIDATE_FUNNEL_EVENTS,
       ...PRACTICE_FUNNEL_EVENTS,
+      ...COMMERCIAL_EVENTS,
+      ...ENGAGEMENT_EVENTS,
     ]),
   ),
 );

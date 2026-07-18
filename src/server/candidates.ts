@@ -53,7 +53,8 @@ export interface ProfileStepInput {
   availableFrom?: Date | null;
   salaryMin?: number | null;
   salaryMax?: number | null;
-  hourlyRateMin?: number | null;
+  /** Gewenst omzetpercentage bij zzp (geheel getal, 0–100). */
+  revenueShareMin?: number | null;
   availability?: CandidateAvailability;
   equipmentExperience?: string[];
   equipmentWantsToWork?: string[];
@@ -199,8 +200,10 @@ export async function saveProfileStep(
       input.availableFrom !== undefined ? input.availableFrom : bestaand?.availableFrom ?? null,
     salaryMin: input.salaryMin !== undefined ? input.salaryMin : bestaand?.salaryMin ?? null,
     salaryMax: input.salaryMax !== undefined ? input.salaryMax : bestaand?.salaryMax ?? null,
-    hourlyRateMin:
-      input.hourlyRateMin !== undefined ? input.hourlyRateMin : bestaand?.hourlyRateMin ?? null,
+    revenueShareMin:
+      input.revenueShareMin !== undefined
+        ? input.revenueShareMin
+        : bestaand?.revenueShareMin ?? null,
     availability: input.availability ?? castAvailability(bestaand?.availability),
     equipmentExperience: input.equipmentExperience ?? bestaand?.equipmentExperience ?? [],
     equipmentWantsToWork: input.equipmentWantsToWork ?? bestaand?.equipmentWantsToWork ?? [],

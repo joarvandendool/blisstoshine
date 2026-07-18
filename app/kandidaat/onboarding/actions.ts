@@ -108,7 +108,8 @@ const locatieSchema = z.object({
     .string()
     .regex(DATUM_PATROON, "Ongeldige startdatum")
     .nullable(),
-  // salarisindicatie in hele euro's (client) — hieronder omgerekend naar centen
+  // salarisindicatie in hele euro's (client) — hieronder omgerekend naar centen;
+  // het omzetpercentage (zzp) blijft een geheel getal in procenten
   salaryMin: z
     .number()
     .int("Vul het salaris in hele euro's in")
@@ -121,11 +122,11 @@ const locatieSchema = z.object({
     .min(0, "Salaris kan niet negatief zijn")
     .max(20000, "Controleer het maandsalaris")
     .nullable(),
-  hourlyRateMin: z
+  revenueShareMin: z
     .number()
-    .int("Vul het uurtarief in hele euro's in")
-    .min(0, "Uurtarief kan niet negatief zijn")
-    .max(500, "Controleer het uurtarief")
+    .int("Vul het omzetpercentage in hele procenten in")
+    .min(0, "Het omzetpercentage kan niet negatief zijn")
+    .max(100, "Het omzetpercentage kan niet boven de 100% liggen")
     .nullable(),
 });
 
@@ -220,7 +221,8 @@ function naarStapInvoer(d: StapInvoer): ProfileStepInput {
         availableFrom: d.availableFrom === null ? null : new Date(d.availableFrom),
         salaryMin: naarCenten(d.salaryMin),
         salaryMax: naarCenten(d.salaryMax),
-        hourlyRateMin: naarCenten(d.hourlyRateMin),
+        // percentage, geen bedrag — dus géén centen-conversie
+        revenueShareMin: d.revenueShareMin,
       };
     case "vakinhoud":
       return {

@@ -95,7 +95,8 @@ interface VacatureWaarden {
   startByHard: boolean;
   salaryMin: number | null;
   salaryMax: number | null;
-  hourlyRateMax: number | null;
+  /** Maximaal geboden omzetpercentage bij zzp (geheel getal, 0–100). */
+  revenueShareMax: number | null;
   registrations: CriteriaGroepWaarde;
   equipment: CriteriaGroepWaarde;
   software: CriteriaGroepWaarde;
@@ -193,7 +194,7 @@ function beginWaarden(locaties: WizardLocatie[]): VacatureWaarden {
     startByHard: false,
     salaryMin: null,
     salaryMax: null,
-    hourlyRateMax: null,
+    revenueShareMax: null,
     registrations: legeGroep(),
     equipment: legeGroep(),
     software: legeGroep(),
@@ -273,7 +274,7 @@ function stapPayload(id: StapId, w: VacatureWaarden): unknown {
         startByHard: w.startBy === null ? false : w.startByHard,
         salaryMin: w.salaryMin,
         salaryMax: w.salaryMax,
-        hourlyRateMax: w.hourlyRateMax,
+        revenueShareMax: w.revenueShareMax,
       };
     case "eisen":
       return {
@@ -809,7 +810,7 @@ export function VacatureWizard({ slug, locaties }: VacatureWizardProps) {
               </Vraag>
             ) : null}
             <Vraag
-              titel="Salaris- of tariefrange (optioneel)"
+              titel="Salaris of omzetpercentage (optioneel)"
               hint="Een indicatie helpt kandidaten inschatten of het past."
             >
               <div className="grid gap-5 sm:grid-cols-2">
@@ -847,22 +848,32 @@ export function VacatureWizard({ slug, locaties }: VacatureWizardProps) {
                   </>
                 ) : null}
                 {waarden.contractTypes.includes("zzp") ? (
-                  <Field label="Uurtarief tot (zzp)" htmlFor="uurtarief">
-                    <Input
-                      id="uurtarief"
-                      type="number"
-                      inputMode="numeric"
-                      min={0}
-                      step={5}
-                      placeholder="bijv. 95"
-                      value={waarden.hourlyRateMax ?? ""}
-                      onChange={(e) =>
-                        zet(
-                          "hourlyRateMax",
-                          e.target.value === "" ? null : Number(e.target.value),
-                        )
-                      }
-                    />
+                  <Field
+                    label="Omzetpercentage (zzp)"
+                    htmlFor="omzetpercentage"
+                    hint="Gebruikelijk is 40–55% van de gedraaide omzet."
+                  >
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="omzetpercentage"
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        max={100}
+                        step={1}
+                        placeholder="bijv. 45"
+                        value={waarden.revenueShareMax ?? ""}
+                        onChange={(e) =>
+                          zet(
+                            "revenueShareMax",
+                            e.target.value === "" ? null : Number(e.target.value),
+                          )
+                        }
+                      />
+                      <span aria-hidden="true" className="text-sm font-semibold text-ink/70">
+                        %
+                      </span>
+                    </div>
                   </Field>
                 ) : null}
               </div>

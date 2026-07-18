@@ -44,6 +44,8 @@ model Organization {
   kvkNumber         String?
   billingEmail      String?
   acquisitionSource String?
+  activatedAt       DateTime? // practice_activated is eenmalig
+  onboardingState   Json? // autosave van de commerciële onboarding
   createdAt         DateTime   @default(now())
   archivedAt        DateTime?
 
@@ -75,9 +77,12 @@ model PracticeLocation {
   software           String[] @default([])
   specializations    String[] @default([])
   patientPopulation  String[] @default([])
+  // gewenste minimale bezetting per dagdeel: { ma: { ochtend: 2, … }, … }
+  staffingTarget Json?
   createdAt      DateTime @default(now())
 
-  vacancies Vacancy[]
+  vacancies   Vacancy[]
+  teamMembers TeamMember[]
 
   @@index([organizationId])
 }
@@ -143,7 +148,7 @@ model CandidateProfile {
   availableFrom DateTime?
   salaryMin     Int? // eurocenten p/m bij loondienst
   salaryMax     Int?
-  hourlyRateMin Int? // eurocenten p/u bij zzp
+  revenueShareMin Int? // gewenst omzetpercentage (%) bij zzp — behandelaren werken met een deel van de omzet, niet met uurtarief
 
   // beschikbaarheid per weekdag+dagdeel: { ma: { ochtend: "preferred" | "available" | "unavailable", … }, … }
   availability Json
@@ -205,7 +210,7 @@ model Vacancy {
   startByHard   Boolean  @default(false)
   salaryMin     Int?
   salaryMax     Int?
-  hourlyRateMax Int?
+  revenueShareMax Int? // maximaal geboden omzetpercentage (%) bij zzp
 
   // criteria met niveau: { registrations: {…}, equipment: {…}, … }
   // per criterium: { values: string[], level: "required" | "preferred" | "informational" }
@@ -445,4 +450,142 @@ model MatchingConfigVersion {
   version   String   @unique // semver, gelijk aan algorithmVersion in code
   config    Json
   createdAt DateTime @default(now())
+}
+
+// ---------- commerciële beta: pipeline, gesprekken, consent ----------
+
+// Volledige statushistorie van een kandidaat-vacaturetraject, met de
+// verantwoordelijke actor. De actuele stand leeft op Invitation/Application;
+// dit is het onwijzigbare journaal.
+model PipelineStatusChange {
+  id              String   @id @default(cuid())
+  vacancyId       String
+  candidateUserId String
+  fromStatus      String?
+  toStatus        String // matched|invited|interested|applied|interview_scheduled|offer|hired|declined|rejected|withdrawn
+  actorType       String // practice | candidate | system
+  actorUserId     String?
+  reasonCode      String?
+  note            String?
+  createdAt       DateTime @default(now())
+
+  @@index([vacancyId, candidateUserId, createdAt])
+}
+
+enum InterviewStatus {
+  proposed
+  confirmed
+  declined
+  cancelled
+}
+
+// Gespreksplanning: praktijk stelt momenten voor, kandidaat kiest er één.
+model Interview {
+  id               String          @id @default(cuid())
+  vacancyId        String
+  candidateUserId  String
+  status           InterviewStatus @default(proposed)
+  slots            Json // voorgestelde momenten: [{ startsAt: ISO, durationMinutes }]
+  chosenSlot       DateTime?
+  proposedByUserId String
+  message          String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([vacancyId, candidateUserId])
+  @@index([candidateUserId, status])
+}
+
+// Expliciete toestemming van een kandidaat om naam + contactgegevens te
+// delen met één organisatie (optioneel per vacature). Zonder rij: anoniem.
+model CandidateConsent {
+  id              String    @id @default(cuid())
+  candidateUserId String
+  organizationId  String
+  vacancyId       String?
+  scope           String    @default("contact_details")
+  grantedAt       DateTime  @default(now())
+  revokedAt       DateTime?
+
+  @@unique([candidateUserId, organizationId, vacancyId, scope])
+  @@index([organizationId])
+}
+
+// Gestructureerde reden bij belangrijke beslissingen (data-moat). Verandert
+// nooit automatisch individuele scores.
+model MatchDecisionFeedback {
+  id              String   @id @default(cuid())
+  matchSnapshotId String?
+  vacancyId       String
+  candidateUserId String?
+  organizationId  String?
+  actorType       String // practice | candidate
+  decision        String // declined | rejected | withdrawn | cancelled | other
+  reasonCode      String // dagen|reisafstand|uren|salaris_tarief|ervaring|apparatuur|specialisatie|cultuur|niet_beschikbaar|vacature_gewijzigd|anders
+  note            String? @db.VarChar(500)
+  createdAt       DateTime @default(now())
+
+  @@index([vacancyId])
+  @@index([reasonCode, createdAt])
+}
+
+// ---------- notificaties ----------
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String // stabiele sleutel, bv. invitation_received
+  title     String
+  body      String
+  href      String?
+  readAt    DateTime?
+  dedupeKey String    @unique // voorkomt dubbele meldingen (idempotent)
+  meta      Json?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt, createdAt])
+}
+
+model NotificationPreference {
+  id      String  @id @default(cuid())
+  userId  String
+  type    String // notificatietype of "all"
+  inApp   Boolean @default(true)
+  email   Boolean @default(true)
+
+  @@unique([userId, type])
+}
+
+// Development-outbox voor e-mail zolang er geen productieprovider is.
+model OutboxEmail {
+  id             String    @id @default(cuid())
+  toEmail        String
+  subject        String
+  body           String
+  notificationId String?
+  status         String    @default("pending") // pending | sent | failed
+  createdAt      DateTime  @default(now())
+  sentAt         DateTime?
+
+  @@index([status, createdAt])
+}
+
+// ---------- bezettingsplanning ----------
+
+// Huidig teamlid van een locatie (geen platformgebruiker): naam, functie en
+// vaste werkdagen, met tijdelijke afwezigheid.
+model TeamMember {
+  id          String    @id @default(cuid())
+  locationId  String
+  location    PracticeLocation @relation(fields: [locationId], references: [id])
+  name        String
+  role        String // taxonomie-functie
+  schedule    Json // vaste werkdagen: { ma: { ochtend: true, … }, … }
+  absentFrom  DateTime?
+  absentUntil DateTime?
+  note        String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([locationId])
 }

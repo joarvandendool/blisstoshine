@@ -101,7 +101,7 @@ function sectiePayload(sectie: SectieId, w: ProfielWaarden): unknown {
         availableFrom: w.availableFrom,
         salaryMin: w.salaryMin,
         salaryMax: w.salaryMax,
-        hourlyRateMin: w.hourlyRateMin,
+        revenueShareMin: w.revenueShareMin,
       };
     case "vakinhoud":
       return {
@@ -456,19 +456,29 @@ export function ProfielEditor({
               </>
             ) : null}
             {waarden.contractTypes.includes("zzp") ? (
-              <Field label="Uurtarief vanaf (optioneel)" htmlFor="p-uurtarief">
-                <Input
-                  id="p-uurtarief"
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  step={5}
-                  placeholder="bijv. 85"
-                  value={waarden.hourlyRateMin ?? ""}
-                  onChange={(e) =>
-                    zet("hourlyRateMin", e.target.value === "" ? null : Number(e.target.value))
-                  }
-                />
+              <Field
+                label="Gewenst omzetpercentage vanaf (optioneel)"
+                htmlFor="p-omzetpercentage"
+                hint="Gebruikelijk is 40–55% van de gedraaide omzet."
+              >
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="p-omzetpercentage"
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={100}
+                    step={1}
+                    placeholder="bijv. 45"
+                    value={waarden.revenueShareMin ?? ""}
+                    onChange={(e) =>
+                      zet("revenueShareMin", e.target.value === "" ? null : Number(e.target.value))
+                    }
+                  />
+                  <span aria-hidden="true" className="text-sm font-semibold text-ink/70">
+                    %
+                  </span>
+                </div>
               </Field>
             ) : null}
           </div>

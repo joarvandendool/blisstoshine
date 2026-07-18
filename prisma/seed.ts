@@ -217,7 +217,8 @@ interface KandidaatSeed {
   contractTypes: string[];
   salaryMin?: number;
   salaryMax?: number;
-  hourlyRateMin?: number;
+  /** Gewenst omzetpercentage bij zzp (geheel getal, 0–100). */
+  revenueShareMin?: number;
   availability: CandidateAvailability;
   equipmentExperience?: string[];
   equipmentWantsToWork?: string[];
@@ -258,7 +259,7 @@ async function zorgKandidaat(
     contractTypes: seed.contractTypes,
     salaryMin: seed.salaryMin ?? null,
     salaryMax: seed.salaryMax ?? null,
-    hourlyRateMin: seed.hourlyRateMin ?? null,
+    revenueShareMin: seed.revenueShareMin ?? null,
     equipmentExperience: seed.equipmentExperience ?? [],
     equipmentWantsToWork: seed.equipmentWantsToWork ?? [],
     techniquesWantsToLearn: seed.techniquesWantsToLearn ?? [],
@@ -306,7 +307,8 @@ interface VacatureSeed {
   contractTypes: string[];
   salaryMin?: number;
   salaryMax?: number;
-  hourlyRateMax?: number;
+  /** Maximaal geboden omzetpercentage bij zzp (geheel getal, 0–100). */
+  revenueShareMax?: number;
   criteria: VacancyCriteria;
   culture?: string[];
   mentorship?: boolean;
@@ -337,7 +339,7 @@ async function zorgVacature(
     contractTypes: seed.contractTypes,
     salaryMin: seed.salaryMin ?? null,
     salaryMax: seed.salaryMax ?? null,
-    hourlyRateMax: seed.hourlyRateMax ?? null,
+    revenueShareMax: seed.revenueShareMax ?? null,
     criteria: seed.criteria as unknown as Prisma.InputJsonValue,
     culture: seed.culture ?? [],
     mentorship: seed.mentorship ?? false,
@@ -672,7 +674,8 @@ async function main(): Promise<void> {
       hoursMin: 24,
       hoursMax: 36,
       contractTypes: ["zzp"],
-      hourlyRateMin: 9_500,
+      // tandarts als zzp'er: 50% van de gedraaide omzet
+      revenueShareMin: 50,
       availability: beschikbaarheid({
         ma: { ochtend: "preferred", middag: "preferred" },
         di: { ochtend: "preferred", middag: "preferred" },
@@ -728,7 +731,8 @@ async function main(): Promise<void> {
       hoursMin: 16,
       hoursMax: 24,
       contractTypes: ["zzp"],
-      hourlyRateMin: 8_500,
+      // mondhygiënist als zzp'er: 45% van de gedraaide omzet
+      revenueShareMin: 45,
       availability: beschikbaarheid({
         ma: { ochtend: "preferred", middag: "preferred" },
         di: { ochtend: "preferred", middag: "preferred" },
@@ -903,7 +907,8 @@ async function main(): Promise<void> {
     hoursMin: 24,
     hoursMax: 36,
     contractTypes: ["loondienst", "zzp"],
-    hourlyRateMax: 11_000,
+    // maximaal geboden omzetpercentage voor de zzp-variant
+    revenueShareMax: 50,
     criteria: {
       registrations: { values: ["big_tandarts"], level: "required" },
       equipment: { values: ["itero"], level: "preferred" },

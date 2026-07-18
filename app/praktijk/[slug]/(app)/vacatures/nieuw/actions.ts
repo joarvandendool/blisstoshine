@@ -141,7 +141,8 @@ const werkweekSchema = z.object({
     .min(1, "Kies minstens één contractvorm"),
   startBy: z.string().regex(DATUM_PATROON, "Ongeldige startdatum").nullable(),
   startByHard: z.boolean(),
-  // bedragen in hele euro's (client) — hieronder omgerekend naar centen
+  // salarissen in hele euro's (client) — hieronder omgerekend naar centen;
+  // het omzetpercentage (zzp) blijft een geheel getal in procenten
   salaryMin: z
     .number()
     .int("Vul het salaris in hele euro's in")
@@ -154,11 +155,11 @@ const werkweekSchema = z.object({
     .min(0, "Salaris kan niet negatief zijn")
     .max(20000, "Controleer het maandsalaris")
     .nullable(),
-  hourlyRateMax: z
+  revenueShareMax: z
     .number()
-    .int("Vul het uurtarief in hele euro's in")
-    .min(0, "Uurtarief kan niet negatief zijn")
-    .max(500, "Controleer het uurtarief")
+    .int("Vul het omzetpercentage in hele procenten in")
+    .min(0, "Het omzetpercentage kan niet negatief zijn")
+    .max(100, "Het omzetpercentage kan niet boven de 100% liggen")
     .nullable(),
 });
 
@@ -245,7 +246,8 @@ function naarVacancyUpdate(d: StapInvoer): Partial<VacancyInput> {
         startByHard: d.startByHard,
         salaryMin: naarCenten(d.salaryMin),
         salaryMax: naarCenten(d.salaryMax),
-        hourlyRateMax: naarCenten(d.hourlyRateMax),
+        // percentage, geen bedrag — dus géén centen-conversie
+        revenueShareMax: d.revenueShareMax,
       };
     case "eisen": {
       // Alleen groepen met gekozen waarden komen in de criteria terecht.

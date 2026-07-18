@@ -61,7 +61,8 @@ export interface ProfielWaarden {
   availableFrom: string | null;
   salaryMin: number | null;
   salaryMax: number | null;
-  hourlyRateMin: number | null;
+  /** Gewenst omzetpercentage bij zzp (geheel getal, 0–100). */
+  revenueShareMin: number | null;
   equipmentExperience: string[];
   techniquesWantsToLearn: string[];
   softwareSkills: string[];
@@ -324,7 +325,7 @@ function stapPayload(id: StapId, w: ProfielWaarden): unknown {
         availableFrom: w.availableFrom,
         salaryMin: w.salaryMin,
         salaryMax: w.salaryMax,
-        hourlyRateMin: w.hourlyRateMin,
+        revenueShareMin: w.revenueShareMin,
       };
     case "vakinhoud":
       return {
@@ -698,22 +699,32 @@ export function OnboardingFlow({
                     </>
                   ) : null}
                   {waarden.contractTypes.includes("zzp") ? (
-                    <Field label="Uurtarief vanaf (zzp)" htmlFor="uurtarief">
-                      <Input
-                        id="uurtarief"
-                        type="number"
-                        inputMode="numeric"
-                        min={0}
-                        step={5}
-                        placeholder="bijv. 85"
-                        value={waarden.hourlyRateMin ?? ""}
-                        onChange={(e) =>
-                          zet(
-                            "hourlyRateMin",
-                            e.target.value === "" ? null : Number(e.target.value),
-                          )
-                        }
-                      />
+                    <Field
+                      label="Gewenst omzetpercentage vanaf (zzp)"
+                      htmlFor="omzetpercentage"
+                      hint="Gebruikelijk is 40–55% van de gedraaide omzet."
+                    >
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id="omzetpercentage"
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          max={100}
+                          step={1}
+                          placeholder="bijv. 45"
+                          value={waarden.revenueShareMin ?? ""}
+                          onChange={(e) =>
+                            zet(
+                              "revenueShareMin",
+                              e.target.value === "" ? null : Number(e.target.value),
+                            )
+                          }
+                        />
+                        <span aria-hidden="true" className="text-sm font-semibold text-ink/70">
+                          %
+                        </span>
+                      </div>
                     </Field>
                   ) : null}
                 </div>

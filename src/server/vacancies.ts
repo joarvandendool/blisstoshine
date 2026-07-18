@@ -36,7 +36,8 @@ export interface VacancyInput {
   startByHard?: boolean;
   salaryMin?: number | null;
   salaryMax?: number | null;
-  hourlyRateMax?: number | null;
+  /** Maximaal geboden omzetpercentage bij zzp (geheel getal, 0–100). */
+  revenueShareMax?: number | null;
   criteria?: VacancyCriteria;
   culture?: string[];
   mentorship?: boolean;
@@ -101,7 +102,7 @@ export async function createDraftVacancy(
       startByHard: input.startByHard ?? false,
       salaryMin: input.salaryMin ?? null,
       salaryMax: input.salaryMax ?? null,
-      hourlyRateMax: input.hourlyRateMax ?? null,
+      revenueShareMax: input.revenueShareMax ?? null,
       criteria: (input.criteria ?? {}) as unknown as Prisma.InputJsonValue,
       culture: input.culture ?? [],
       mentorship: input.mentorship ?? false,
@@ -151,7 +152,9 @@ export async function updateVacancy(
       ...(input.startByHard !== undefined ? { startByHard: input.startByHard } : {}),
       ...(input.salaryMin !== undefined ? { salaryMin: input.salaryMin } : {}),
       ...(input.salaryMax !== undefined ? { salaryMax: input.salaryMax } : {}),
-      ...(input.hourlyRateMax !== undefined ? { hourlyRateMax: input.hourlyRateMax } : {}),
+      ...(input.revenueShareMax !== undefined
+        ? { revenueShareMax: input.revenueShareMax }
+        : {}),
       ...(input.criteria !== undefined
         ? { criteria: input.criteria as unknown as Prisma.InputJsonValue }
         : {}),
