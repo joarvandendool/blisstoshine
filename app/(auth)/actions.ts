@@ -44,7 +44,7 @@ export async function registerAction(
   const user = await registerUser({ name, email, password });
   await setSessionCookie(user.id);
 
-  redirect(accountType === "praktijk" ? "/praktijk/nieuw" : "/kandidaat/onboarding");
+  redirect(accountType === "praktijk" ? "/praktijk/start" : "/kandidaat/onboarding");
 }
 
 const loginSchema = z.object({
