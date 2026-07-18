@@ -11,12 +11,47 @@ import { prisma } from "./db";
 const COOKIE_NAME = "mz_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 14; // 14 dagen
 
-function secret(): string {
+let derivedWarningShown = false;
+
+/**
+ * Sessiegeheim. Voorkeur: expliciete SESSION_SECRET (>= 32 tekens). Fallback:
+ * afgeleid via HMAC uit de database-connectiestring die de Vercel/Supabase-
+ * integratie injecteert — die is geheim en heeft hoge entropie, en de
+ * afleiding is deterministisch over alle serverless-instanties. Rotatie van
+ * de databasecredentials logt dan wel alle sessies uit; zet daarom in
+ * productie bij voorkeur alsnog een eigen SESSION_SECRET (die wint altijd).
+ */
+export function secret(): string {
   const s = process.env.SESSION_SECRET;
-  if (!s || s.length < 32) {
-    throw new Error("SESSION_SECRET ontbreekt of is korter dan 32 tekens");
+  if (s && s.length >= 32) return s;
+
+  const bron =
+    process.env.POSTGRES_URL_NON_POOLING ??
+    process.env.POSTGRES_PRISMA_URL ??
+    process.env.POSTGRES_URL ??
+    process.env.DATABASE_URL;
+  if (bron) {
+    if (!derivedWarningShown && process.env.NODE_ENV === "production") {
+      derivedWarningShown = true;
+      console.warn(
+        "SESSION_SECRET niet gezet — sessiegeheim afgeleid van de database-URL. " +
+          "Zet voor productie een eigen SESSION_SECRET (openssl rand -hex 32).",
+      );
+    }
+    return createHmac("sha256", "mondzorgwerkt-sessie-v1").update(bron).digest("hex");
   }
-  return s;
+
+  throw new Error("SESSION_SECRET ontbreekt of is korter dan 32 tekens");
+}
+
+/** Voor health checks: is er een bruikbaar sessiegeheim? */
+export function hasSessionSecret(): boolean {
+  try {
+    secret();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function sign(payload: string): string {

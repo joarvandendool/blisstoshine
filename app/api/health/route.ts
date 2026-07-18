@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { hasSessionSecret } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -7,9 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const checks: Record<string, boolean> = {
     database: false,
-    sessionSecret: Boolean(
-      process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 32,
-    ),
+    sessionSecret: hasSessionSecret(),
   };
   try {
     await prisma.$queryRaw`SELECT 1`;

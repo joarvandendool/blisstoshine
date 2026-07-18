@@ -32,15 +32,24 @@ npm run test:e2e                                 # kritieke flow (vereist build 
 
 ## Productie (Vercel)
 
-1. Zet in Vercel de env vars: `DATABASE_URL` (gebruik de `POSTGRES_PRISMA_URL`
-   van de Supabase-integratie), `SESSION_SECRET` (64 hex tekens),
-   `APP_ENV=production`.
-2. Zet het build command op `prisma generate && prisma migrate deploy && next build`
-   zodra de productie-database gekoppeld is. Zonder database faalt
-   `migrate deploy` bewust — er wordt dan niets half uitgerold.
-3. Draai eenmalig de plancatalogus-sync + seed van plannen:
-   `npx tsx prisma/seed.ts --plans-only` (of laat de app dit idempotent doen bij
-   de eerste abonnement-aanvraag via `syncPlanCatalog()`).
+De app configureert zichzelf vanuit de Supabase-integratie — er is geen
+handmatige env-configuratie nodig:
+
+- **Database**: runtime gebruikt `DATABASE_URL` als die gezet is, anders de
+  door de integratie geïnjecteerde `POSTGRES_PRISMA_URL`/`POSTGRES_URL`
+  (zie `src/lib/db.ts`).
+- **Migraties**: de buildstap draait `scripts/deploy-migrate.mjs`, die
+  `prisma migrate deploy` uitvoert op de niet-gepoolde
+  `POSTGRES_URL_NON_POOLING`; zonder database-URL wordt de stap overgeslagen.
+- **Sessiegeheim**: `SESSION_SECRET` als die gezet is; anders wordt er
+  deterministisch een geheim afgeleid van de database-connectiestring
+  (`src/lib/auth.ts`). Aanbevolen voor productie: zet alsnog een eigen
+  `SESSION_SECRET` (`openssl rand -hex 32`) — die wint altijd, en rotatie van
+  databasecredentials logt dan geen gebruikers uit.
+- **Plancatalogus**: synchroniseert zichzelf idempotent bij het eerste
+  abonnement (`ensureOrgSubscription` → `syncPlanCatalog()`); een lege
+  productiedatabase werkt dus direct. Optioneel: `npm run db:seed` met
+  `ADMIN_PASSWORD` gezet voor demo-data en het beheerdersaccount.
 
 ## Herstel
 
