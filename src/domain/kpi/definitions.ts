@@ -377,6 +377,24 @@ export function mrr(
   return kpi(totaal, DEF_MRR);
 }
 
+const DEF_ARR =
+  "Jaarlijks terugkerende omzet (ARR) in eurocenten: MRR × 12, als run-rate op basis van de huidige abonnementen. Dit is een momentopname van terugkerende abonnementsomzet en géén boekhoudkundige (gerealiseerde of gefactureerde) omzet.";
+
+/**
+ * ARR als run-rate: de huidige MRR × 12. Bewust géén boekhoudkundige omzet —
+ * er wordt niets gezegd over daadwerkelijk gefactureerde of ontvangen bedragen.
+ */
+export function arr(
+  subscriptions: SubscriptionRow[],
+  itemPricesCents: ItemPricesCents,
+): KpiValue {
+  const maandelijks = mrr(subscriptions, itemPricesCents);
+  if (maandelijks.insufficientData || maandelijks.value === null) {
+    return onvoldoendeData(DEF_ARR);
+  }
+  return kpi(maandelijks.value * 12, DEF_ARR);
+}
+
 // ---------- MRR-beweging (maand-op-maand) ----------
 
 /** MRR-momentopname van één organisatie in een bepaalde maand. */
@@ -395,7 +413,10 @@ function mrrPerOrg(snapshots: MrrSnapshot[]): Map<string, number> {
 }
 
 interface MrrMovement {
+  /** Echt nieuw: organisatie kwam vorige maand nog niet in de snapshots voor. */
   newCents: number;
+  /** Reactivatie: organisatie was vorige maand bekend met 0 MRR en betaalt nu weer. */
+  reactivationCents: number;
   expansionCents: number;
   contractionCents: number;
   churnedCents: number;
@@ -404,10 +425,11 @@ interface MrrMovement {
 /**
  * Maand-op-maandvergelijking. Een organisatie telt als betalend bij
  * mrrCents > 0; afwezig of 0 geldt als niet-betalend.
- * - nieuw:      nu betalend, vorige maand niet → volledige huidige MRR
- * - expansion:  beide maanden betalend, gestegen → het verschil
- * - contraction: beide maanden betalend, gedaald → het verschil (positief)
- * - churned:    vorige maand betalend, nu niet → volledige vorige MRR
+ * - nieuw:        nu betalend, vorige maand onbekend → volledige huidige MRR
+ * - reactivatie:  nu betalend, vorige maand bekend met 0 → volledige huidige MRR
+ * - expansion:    beide maanden betalend, gestegen → het verschil
+ * - contraction:  beide maanden betalend, gedaald → het verschil (positief)
+ * - churned:      vorige maand betalend, nu niet → volledige vorige MRR
  */
 function mrrMovement(
   previous: MrrSnapshot[],
@@ -417,6 +439,7 @@ function mrrMovement(
   const huidige = mrrPerOrg(current);
   const beweging: MrrMovement = {
     newCents: 0,
+    reactivationCents: 0,
     expansionCents: 0,
     contractionCents: 0,
     churnedCents: 0,
@@ -426,7 +449,13 @@ function mrrMovement(
     const eerder = vorige.get(orgId) ?? 0;
     if (nu <= 0) continue;
     if (eerder <= 0) {
-      beweging.newCents += nu;
+      // Splitsing nieuw vs. reactivatie: alleen wie vorige maand al bekend was
+      // (met 0 MRR) telt als reactivatie; volledig onbekend telt als nieuw.
+      if (vorige.has(orgId)) {
+        beweging.reactivationCents += nu;
+      } else {
+        beweging.newCents += nu;
+      }
     } else if (nu > eerder) {
       beweging.expansionCents += nu - eerder;
     } else if (nu < eerder) {
@@ -444,10 +473,26 @@ function mrrMovement(
 }
 
 const DEF_NEW_MRR =
-  "Nieuwe MRR in eurocenten: omzet van organisaties die deze maand betalend werden.";
+  "Nieuwe MRR in eurocenten: omzet van organisaties die deze maand betalend werden, inclusief reactivaties (organisaties die van € 0 terugkeerden). Zie reactivatie-MRR voor alleen dat deel.";
 
 export function newMrr(previous: MrrSnapshot[], current: MrrSnapshot[]): KpiValue {
-  return kpi(mrrMovement(previous, current).newCents, DEF_NEW_MRR);
+  const beweging = mrrMovement(previous, current);
+  return kpi(beweging.newCents + beweging.reactivationCents, DEF_NEW_MRR);
+}
+
+const DEF_REACTIVATION_MRR =
+  "Reactivatie-MRR in eurocenten: omzet van organisaties die vorige maand bekend waren met € 0 MRR en deze maand weer betalen. Deel van de nieuwe MRR; telt bewust NIET mee in NRR.";
+
+/**
+ * Reactivatie-MRR: organisaties die maand-op-maand van 0 terug naar > 0 gaan.
+ * Beperking: er worden twee maandsnapshots vergeleken; een organisatie die
+ * vorige maand helemaal niet in de snapshots voorkwam telt als nieuw.
+ */
+export function reactivationMrr(
+  previous: MrrSnapshot[],
+  current: MrrSnapshot[],
+): KpiValue {
+  return kpi(mrrMovement(previous, current).reactivationCents, DEF_REACTIVATION_MRR);
 }
 
 const DEF_EXPANSION_MRR =
@@ -483,10 +528,72 @@ export function churnedMrr(
   return kpi(mrrMovement(previous, current).churnedCents, DEF_CHURNED_MRR);
 }
 
+// ---------- revenue retention (GRR/NRR) ----------
+
+/** Start-MRR: som van de MRR van betalende organisaties (mrrCents > 0) vorige maand. */
+function startMrr(previous: MrrSnapshot[]): { startCents: number; payingOrgs: number } {
+  let startCents = 0;
+  let payingOrgs = 0;
+  for (const cents of mrrPerOrg(previous).values()) {
+    if (cents <= 0) continue;
+    startCents += cents;
+    payingOrgs += 1;
+  }
+  return { startCents, payingOrgs };
+}
+
+const DEF_GRR =
+  "Gross revenue retention (GRR): (start-MRR − churned MRR − contraction-MRR) / start-MRR over de betalende organisaties aan het begin van de maand. Expansion, nieuwe klanten en reactivaties tellen niet mee; minimaal 3 betalende organisaties. MRR is terugkerende abonnementsomzet, geen boekhoudkundige omzet.";
+
+/** GRR op basis van dezelfde maandsnapshots als de MRR-beweging. Uitkomst in [0, 1]. */
+export function grr(
+  previous: MrrSnapshot[],
+  current: MrrSnapshot[],
+  minimumPayingOrgs = 3,
+): KpiValue {
+  const { startCents, payingOrgs } = startMrr(previous);
+  if (payingOrgs < minimumPayingOrgs || startCents <= 0) {
+    return onvoldoendeData(DEF_GRR);
+  }
+  const beweging = mrrMovement(previous, current);
+  return kpi(
+    (startCents - beweging.churnedCents - beweging.contractionCents) / startCents,
+    DEF_GRR,
+  );
+}
+
+const DEF_NRR =
+  "Net revenue retention (NRR): (start-MRR + expansion-MRR − churned MRR − contraction-MRR) / start-MRR over de betalende organisaties aan het begin van de maand. Nieuwe klanten en reactivaties tellen bewust NIET mee; minimaal 3 betalende organisaties. MRR is terugkerende abonnementsomzet, geen boekhoudkundige omzet.";
+
+/**
+ * NRR op basis van dezelfde maandsnapshots als de MRR-beweging. Reactivaties
+ * (van 0 terug naar > 0) tellen niet mee: NRR meet uitsluitend hoe de omzet
+ * van de bestaande betalende klantenbasis zich ontwikkelt.
+ */
+export function nrr(
+  previous: MrrSnapshot[],
+  current: MrrSnapshot[],
+  minimumPayingOrgs = 3,
+): KpiValue {
+  const { startCents, payingOrgs } = startMrr(previous);
+  if (payingOrgs < minimumPayingOrgs || startCents <= 0) {
+    return onvoldoendeData(DEF_NRR);
+  }
+  const beweging = mrrMovement(previous, current);
+  return kpi(
+    (startCents +
+      beweging.expansionCents -
+      beweging.churnedCents -
+      beweging.contractionCents) /
+      startCents,
+    DEF_NRR,
+  );
+}
+
 // ---------- gemiddelden en verdeling ----------
 
 const DEF_ARPO =
-  "Gemiddelde maandomzet per betalende organisatie (ARPO) in eurocenten, afgerond op hele centen.";
+  "Gemiddelde maandelijkse abonnementsomzet (MRR, geen boekhoudkundige omzet) per betalende organisatie (ARPO/ARPA) in eurocenten, afgerond op hele centen.";
 
 /** Average revenue per organization: MRR gedeeld door het aantal betalende organisaties. */
 export function arpo(
@@ -504,6 +611,13 @@ export function arpo(
     .reduce((som, s) => som + subscriptionMrrCents(s, itemPricesCents), 0);
   return kpi(Math.round(totaal / betalend.size), DEF_ARPO);
 }
+
+/**
+ * ARPA (average revenue per account) — hernoeming van ARPO: in dit product is
+ * één account één organisatie, dus beide namen verwijzen naar dezelfde meting.
+ * Beide exports blijven bestaan.
+ */
+export const arpa: typeof arpo = arpo;
 
 export interface RevenuePerPlanEntry {
   planCode: string;
@@ -558,6 +672,29 @@ export function logoChurnMonthly(
     ([orgId]) => (huidige.get(orgId) ?? 0) <= 0,
   ).length;
   return kpi(vertrokken / betalendVorige.length, DEF_LOGO_CHURN);
+}
+
+const DEF_LOGO_RETENTION =
+  "Maandelijkse logo-retentie: aandeel betalende organisaties aan het begin van de maand dat aan het einde van de maand nog betaalt (complement van logo-churn); minimaal 5 betalende organisaties.";
+
+/** Logo-retentie op basis van dezelfde maandsnapshots als de MRR-beweging. */
+export function logoRetention(
+  previous: MrrSnapshot[],
+  current: MrrSnapshot[],
+  minimumPayingOrgs = 5,
+): KpiValue {
+  const vorige = mrrPerOrg(previous);
+  const huidige = mrrPerOrg(current);
+  const betalendVorige = Array.from(vorige.entries()).filter(
+    ([, cents]) => cents > 0,
+  );
+  if (betalendVorige.length < minimumPayingOrgs) {
+    return onvoldoendeData(DEF_LOGO_RETENTION);
+  }
+  const gebleven = betalendVorige.filter(
+    ([orgId]) => (huidige.get(orgId) ?? 0) > 0,
+  ).length;
+  return kpi(gebleven / betalendVorige.length, DEF_LOGO_RETENTION);
 }
 
 // ---------- cohortretentie ----------
@@ -633,6 +770,208 @@ export function revenueConcentration(snapshots: MrrSnapshot[]): KpiValue {
   }
   if (totaal <= 0) return onvoldoendeData(DEF_REVENUE_CONCENTRATION);
   return kpi(grootste / totaal, DEF_REVENUE_CONCENTRATION);
+}
+
+function defRevenueConcentrationTop(topN: number): string {
+  return `Omzetconcentratie: gezamenlijk aandeel van de ${topN} grootste klanten in de totale MRR.`;
+}
+
+/**
+ * Omzetconcentratie top-N: het gezamenlijke MRR-aandeel van de N grootste
+ * klanten (per organisatie gesommeerd). Met minder dan N betalende
+ * organisaties is de uitkomst per definitie 1. Zonder omzet onvoldoende data.
+ */
+export function revenueConcentrationTopN(
+  snapshots: MrrSnapshot[],
+  topN: number,
+): KpiValue {
+  const definition = defRevenueConcentrationTop(topN);
+  const betalend = Array.from(mrrPerOrg(snapshots).values())
+    .filter((cents) => cents > 0)
+    .sort((a, b) => b - a);
+  const totaal = betalend.reduce((som, cents) => som + cents, 0);
+  if (totaal <= 0 || topN < 1) return onvoldoendeData(definition);
+  const top = betalend.slice(0, topN).reduce((som, cents) => som + cents, 0);
+  return kpi(top / totaal, definition);
+}
+
+// ---------- contractmix (maand vs. jaar) ----------
+
+export type ContractInterval = "monthly" | "yearly";
+
+/** Eén betalend abonnement met zijn facturatie-interval, voor de contractmix. */
+export interface ContractMixRow {
+  mrrCents: number;
+  interval: ContractInterval;
+}
+
+const DEF_MAAND_VS_JAAR_MIX =
+  "Contractmix: aandeel van de MRR dat uit jaarcontracten komt (0 = alles maandelijks, 1 = alles jaarlijks). Vereist een betrouwbare interval-bron per abonnement; zolang die ontbreekt geldt onvoldoende data.";
+
+/**
+ * Aandeel MRR uit jaarcontracten. De invoer bevat expliciet het interval per
+ * abonnement; `null` betekent dat er (nog) geen interval-bron is — het
+ * Subscription-model legt het gekozen facturatie-interval niet vast — en
+ * levert eerlijk onvoldoende data op in plaats van een aanname.
+ */
+export function maandVsJaarMix(rows: ContractMixRow[] | null): KpiValue {
+  if (rows === null) return onvoldoendeData(DEF_MAAND_VS_JAAR_MIX);
+  let totaal = 0;
+  let jaarlijks = 0;
+  for (const rij of rows) {
+    if (rij.mrrCents <= 0) continue;
+    totaal += rij.mrrCents;
+    if (rij.interval === "yearly") jaarlijks += rij.mrrCents;
+  }
+  if (totaal <= 0) return onvoldoendeData(DEF_MAAND_VS_JAAR_MIX);
+  return kpi(jaarlijks / totaal, DEF_MAAND_VS_JAAR_MIX);
+}
+
+// ---------- betalingsmetingen zonder invoerbron (Stripe) ----------
+//
+// Deze drie KPI's hebben nog GEEN invoerbron: de LocalTestBillingProvider kent
+// geen kortingen, refunds of mislukte betalingen. Ze retourneren daarom altijd
+// onvoldoende data met een eerlijke definitie — er wordt niets verzonnen.
+
+const DEF_KORTINGEN_TOTAAL =
+  "Totaal verleende kortingen in eurocenten over de gemeten periode. Nog geen invoerbron: wordt gemeten zodra echte betalingen via Stripe lopen.";
+
+export function kortingenTotaal(): KpiValue {
+  return onvoldoendeData(DEF_KORTINGEN_TOTAAL);
+}
+
+const DEF_REFUNDS_TOTAAL =
+  "Totaal terugbetaalde bedragen (refunds) in eurocenten over de gemeten periode. Nog geen invoerbron: wordt gemeten zodra echte betalingen via Stripe lopen.";
+
+export function refundsTotaal(): KpiValue {
+  return onvoldoendeData(DEF_REFUNDS_TOTAAL);
+}
+
+const DEF_FAILED_PAYMENTS_COUNT =
+  "Aantal mislukte betalingen over de gemeten periode. Nog geen invoerbron: wordt gemeten zodra echte betalingen via Stripe lopen.";
+
+export function failedPaymentsCount(): KpiValue {
+  return onvoldoendeData(DEF_FAILED_PAYMENTS_COUNT);
+}
+
+// ---------- unit economics: CAC, payback en LTV ----------
+//
+// Pure functies die kostendata als parameter EISEN. Het product legt zelf geen
+// marketing-/saleskosten of marges vast; zonder aangeleverde kosteninvoer
+// (parameter null) geldt onvoldoende data ("kostendata ontbreekt").
+
+/** Kosteninvoer voor CAC over één gemeten periode. */
+export interface CacCostInput {
+  /** Acquisitiekosten (marketing + sales) in eurocenten over de periode. */
+  acquisitionCostCents: number;
+  /** Aantal nieuwe betalende klanten in dezelfde periode. */
+  newPayingCustomers: number;
+}
+
+const DEF_CAC =
+  "Customer acquisition cost (CAC) in eurocenten: acquisitiekosten (marketing + sales) gedeeld door het aantal nieuwe betalende klanten in dezelfde periode. Zonder aangeleverde kosteninvoer geldt onvoldoende data (kostendata ontbreekt).";
+
+/** CAC; afgerond op hele centen. Zonder kosteninvoer of nieuwe klanten → onvoldoende data. */
+export function cac(input: CacCostInput | null): KpiValue {
+  if (input === null || input.newPayingCustomers <= 0) {
+    return onvoldoendeData(DEF_CAC);
+  }
+  return kpi(
+    Math.round(input.acquisitionCostCents / input.newPayingCustomers),
+    DEF_CAC,
+  );
+}
+
+/** Kosteninvoer voor CAC per acquisitiekanaal. */
+export interface ChannelCacInput extends CacCostInput {
+  channel: string;
+}
+
+export interface CacPerChannelEntry {
+  channel: string;
+  /** CAC in eurocenten; null zonder nieuwe klanten in dit kanaal. */
+  cacCents: number | null;
+  insufficientData: boolean;
+}
+
+export interface CacPerChannelResult {
+  entries: CacPerChannelEntry[];
+  /** true wanneer er helemaal geen kosteninvoer is aangeleverd. */
+  insufficientData: boolean;
+  definition: string;
+}
+
+const DEF_CAC_PER_KANAAL =
+  "CAC per acquisitiekanaal in eurocenten: kanaalkosten gedeeld door nieuwe betalende klanten uit dat kanaal. Zonder aangeleverde kosteninvoer geldt onvoldoende data (kostendata ontbreekt).";
+
+/** CAC per kanaal; deterministisch gesorteerd op kanaalnaam. */
+export function cacPerKanaal(
+  inputs: ChannelCacInput[] | null,
+): CacPerChannelResult {
+  if (inputs === null) {
+    return { entries: [], insufficientData: true, definition: DEF_CAC_PER_KANAAL };
+  }
+  const entries: CacPerChannelEntry[] = inputs
+    .map((input) => {
+      const teWeinig = input.newPayingCustomers <= 0;
+      return {
+        channel: input.channel,
+        cacCents: teWeinig
+          ? null
+          : Math.round(input.acquisitionCostCents / input.newPayingCustomers),
+        insufficientData: teWeinig,
+      };
+    })
+    .sort((a, b) => a.channel.localeCompare(b.channel));
+  return { entries, insufficientData: false, definition: DEF_CAC_PER_KANAAL };
+}
+
+/** Invoer voor de CAC-terugverdientijd op brutomarge. */
+export interface CacPaybackInput {
+  cacCents: number;
+  /** ARPA per maand in eurocenten (MRR per betalende organisatie). */
+  arpaMonthlyCents: number;
+  /** Brutomarge als fractie (0–1). */
+  grossMarginFraction: number;
+}
+
+const DEF_CAC_PAYBACK =
+  "CAC-terugverdientijd in maanden: CAC gedeeld door (maandelijkse ARPA × brutomarge). ARPA is gebaseerd op MRR (terugkerende abonnementsomzet), niet op boekhoudkundige omzet. Zonder aangeleverde kosteninvoer geldt onvoldoende data (kostendata ontbreekt).";
+
+/** Terugverdientijd in maanden; onvoldoende data zonder kosteninvoer of bij marge×ARPA ≤ 0. */
+export function grossMarginCacPayback(input: CacPaybackInput | null): KpiValue {
+  if (input === null) return onvoldoendeData(DEF_CAC_PAYBACK);
+  const margeOmzet = input.arpaMonthlyCents * input.grossMarginFraction;
+  if (margeOmzet <= 0) return onvoldoendeData(DEF_CAC_PAYBACK);
+  return kpi(input.cacCents / margeOmzet, DEF_CAC_PAYBACK);
+}
+
+/** Invoer voor de LTV-berekening. */
+export interface LtvInput {
+  /** ARPA per maand in eurocenten (MRR per betalende organisatie). */
+  arpaMonthlyCents: number;
+  /** Brutomarge als fractie (0–1). */
+  grossMarginFraction: number;
+  /** Maandelijkse logo-churn als fractie (0–1); moet > 0 zijn. */
+  monthlyLogoChurnFraction: number;
+}
+
+const DEF_LTV =
+  "Customer lifetime value (LTV) in eurocenten: (maandelijkse ARPA × brutomarge) / maandelijkse logo-churn. ARPA is gebaseerd op MRR (terugkerende abonnementsomzet), niet op boekhoudkundige omzet. Zonder aangeleverde kosten- en margedata geldt onvoldoende data (kostendata ontbreekt).";
+
+/**
+ * LTV; afgerond op hele centen. Onvoldoende data zonder kosteninvoer of bij
+ * churn ≤ 0 (de klantlevensduur is dan niet meetbaar, niet oneindig).
+ */
+export function ltv(input: LtvInput | null): KpiValue {
+  if (input === null) return onvoldoendeData(DEF_LTV);
+  if (input.monthlyLogoChurnFraction <= 0) return onvoldoendeData(DEF_LTV);
+  const margeOmzet = input.arpaMonthlyCents * input.grossMarginFraction;
+  if (margeOmzet <= 0) return onvoldoendeData(DEF_LTV);
+  return kpi(
+    Math.round(margeOmzet / input.monthlyLogoChurnFraction),
+    DEF_LTV,
+  );
 }
 
 // =====================================================================

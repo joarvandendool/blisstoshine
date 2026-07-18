@@ -8,12 +8,15 @@
 // bewust in de pagina, zodat deze module ook in scripts en tests bruikbaar is.
 
 import { prisma } from "@/lib/db";
+import { ADDON_CATALOG } from "@/domain/entitlements";
 import {
   activeCandidates,
   activePractices,
   activeVacancies,
   applicationConversion,
+  arpa,
   arpo,
+  arr,
   capacityPlannerPractices,
   checkoutConversion,
   churnedMrr,
@@ -25,21 +28,27 @@ import {
   expansionMrr,
   firstInvitationShare,
   firstStrongMatchShare,
+  grr,
   interviewsScheduled,
   invitationAcceptance,
   invitationsSent,
   logoChurnMonthly,
+  logoRetention,
+  maandVsJaarMix,
   matchStudioPractices,
   matchesPerVacancy,
   monthlyActivePractices,
   mrr,
   newMrr,
   newPracticeAccounts,
+  nrr,
   onboardingCompletionRate,
   payingOrganizations,
   placements,
   radarViewedShare,
+  reactivationMrr,
   revenueConcentration,
+  revenueConcentrationTopN,
   revenuePerPlan,
   simulationsPerPractice,
   subscriptionMrrCents,
@@ -217,23 +226,34 @@ export interface SaasKpis {
   trialOrganizations: KpiValue;
   payingOrganizations: KpiValue;
   mrr: KpiValue;
+  arr: KpiValue;
   arpo: KpiValue;
+  /** ARPA = ARPO (één account is één organisatie); beide namen beschikbaar. */
+  arpa: KpiValue;
   newMrr: KpiValue;
+  reactivationMrr: KpiValue;
   expansionMrr: KpiValue;
   contractionMrr: KpiValue;
   churnedMrr: KpiValue;
+  grr: KpiValue;
+  nrr: KpiValue;
   logoChurnMonthly: KpiValue;
+  logoRetention: KpiValue;
+  maandVsJaarMix: KpiValue;
   revenuePerPlan: RevenuePerPlanResult;
   cohortRetention: CohortRetentionResult;
   revenueConcentration: KpiValue;
+  revenueConcentrationTop3: KpiValue;
 }
 
 /**
- * Maandprijzen van losse abonnementsitems in eurocenten. In deze release
- * worden er nog geen losse items verkocht; onbekende sleutels tellen als 0
- * (zie subscriptionMrrCents in het domein).
+ * Maandprijzen van losse abonnementsitems (add-ons) in eurocenten, rechtstreeks
+ * uit de add-on-catalogus. Itemsleutels die niet in de catalogus staan tellen
+ * als 0 (zie subscriptionMrrCents in het domein).
  */
-const ITEM_PRIJZEN_CENTEN: ItemPricesCents = {};
+const ITEM_PRIJZEN_CENTEN: ItemPricesCents = Object.fromEntries(
+  Object.values(ADDON_CATALOG).map((addon) => [addon.key, addon.priceMonthlyCents]),
+);
 
 /**
  * Alle SaaS-KPI's. De maand-op-maandbeweging (new/expansion/contraction/
@@ -307,15 +327,27 @@ export async function saasKpis(): Promise<SaasKpis> {
     trialOrganizations: trialOrganizations(rijen),
     payingOrganizations: payingOrganizations(rijen),
     mrr: mrr(rijen, ITEM_PRIJZEN_CENTEN),
+    arr: arr(rijen, ITEM_PRIJZEN_CENTEN),
     arpo: arpo(rijen, ITEM_PRIJZEN_CENTEN),
+    arpa: arpa(rijen, ITEM_PRIJZEN_CENTEN),
     newMrr: newMrr(vorigeSnapshots, huidigeSnapshots),
+    reactivationMrr: reactivationMrr(vorigeSnapshots, huidigeSnapshots),
     expansionMrr: expansionMrr(vorigeSnapshots, huidigeSnapshots),
     contractionMrr: contractionMrr(vorigeSnapshots, huidigeSnapshots),
     churnedMrr: churnedMrr(vorigeSnapshots, huidigeSnapshots),
+    grr: grr(vorigeSnapshots, huidigeSnapshots),
+    nrr: nrr(vorigeSnapshots, huidigeSnapshots),
     logoChurnMonthly: logoChurnMonthly(vorigeSnapshots, huidigeSnapshots),
+    logoRetention: logoRetention(vorigeSnapshots, huidigeSnapshots),
+    // Het Subscription-model legt het gekozen facturatie-interval (maand/jaar)
+    // niet vast — alleen currentPeriodStart/End, en changePlan reset dat naar
+    // maandelijks. Er is dus geen betrouwbare interval-bron; `null` levert
+    // eerlijk onvoldoende data op (zie maandVsJaarMix in het domein).
+    maandVsJaarMix: maandVsJaarMix(null),
     revenuePerPlan: revenuePerPlan(rijen, ITEM_PRIJZEN_CENTEN),
     cohortRetention: cohortRetention(cohortRijen),
     revenueConcentration: revenueConcentration(huidigeSnapshots),
+    revenueConcentrationTop3: revenueConcentrationTopN(huidigeSnapshots, 3),
   };
 }
 

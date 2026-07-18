@@ -251,6 +251,7 @@ export default async function InternKpiPagina() {
   // grootste beweging. Richting staat óók in het teken, nooit alleen in kleur.
   const mrrBeweging = [
     { label: "Nieuwe MRR", kpi: saas.newMrr, richting: "in" },
+    { label: "Reactivatie-MRR", kpi: saas.reactivationMrr, richting: "in" },
     { label: "Expansion-MRR", kpi: saas.expansionMrr, richting: "in" },
     { label: "Contraction-MRR", kpi: saas.contractionMrr, richting: "uit" },
     { label: "Churned MRR", kpi: saas.churnedMrr, richting: "uit" },
@@ -467,9 +468,26 @@ export default async function InternKpiPagina() {
             formatteer={formatEuroCenten}
           />
           <KpiTegel
-            label="Gemiddelde omzet per organisatie"
-            kpi={saas.arpo}
+            label="ARR (run-rate)"
+            kpi={saas.arr}
             formatteer={formatEuroCenten}
+          />
+          <KpiTegel
+            label="Gemiddelde omzet per organisatie (ARPA)"
+            kpi={saas.arpa}
+            formatteer={formatEuroCenten}
+          />
+          <KpiTegel
+            label="Gross revenue retention (GRR)"
+            kpi={saas.grr}
+            formatteer={formatProcentGetal}
+            suffix="%"
+          />
+          <KpiTegel
+            label="Net revenue retention (NRR)"
+            kpi={saas.nrr}
+            formatteer={formatProcentGetal}
+            suffix="%"
           />
           <KpiTegel
             label="Maandelijkse logo-churn"
@@ -478,8 +496,26 @@ export default async function InternKpiPagina() {
             suffix="%"
           />
           <KpiTegel
+            label="Maandelijkse logo-retentie"
+            kpi={saas.logoRetention}
+            formatteer={formatProcentGetal}
+            suffix="%"
+          />
+          <KpiTegel
+            label="MRR uit jaarcontracten"
+            kpi={saas.maandVsJaarMix}
+            formatteer={formatProcentGetal}
+            suffix="%"
+          />
+          <KpiTegel
             label="Omzetconcentratie grootste klant"
             kpi={saas.revenueConcentration}
+            formatteer={formatProcentGetal}
+            suffix="%"
+          />
+          <KpiTegel
+            label="Omzetconcentratie top-3"
+            kpi={saas.revenueConcentrationTop3}
             formatteer={formatProcentGetal}
             suffix="%"
           />
