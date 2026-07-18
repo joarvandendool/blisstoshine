@@ -52,7 +52,7 @@ export default function Home() {
   return (
     <>
       <header className="header">
-        <div className="container header-inner">
+        <div className="mkt-container header-inner">
           <a className="wordmark" href="#">
             <Wordmark />
           </a>
@@ -72,7 +72,7 @@ export default function Home() {
           <div className="orb orb-1" />
           <div className="orb orb-2" />
           <div className="orb orb-3" />
-          <div className="container">
+          <div className="mkt-container">
             <span className="hero-label">Hét carrièreplatform voor de mondzorg</span>
             <h1>
               Werk dat <em>past</em>,<br />
@@ -100,7 +100,7 @@ export default function Home() {
           </div>
         </section>
 
-        <div className="container stats">
+        <div className="mkt-container stats">
           <div className="stat">
             <div className="getal">
               <em>250</em>+
@@ -122,7 +122,7 @@ export default function Home() {
         </div>
 
         <section className="sectie" id="vacatures">
-          <div className="container">
+          <div className="mkt-container">
             <div className="sectie-kop">
               <h2>
                 Uitgelichte <em>vacatures</em>
@@ -157,7 +157,7 @@ export default function Home() {
         </section>
 
         <section className="sectie" id="zo-werkt-het">
-          <div className="container">
+          <div className="mkt-container">
             <div className="sectie-kop gecentreerd">
               <h2>
                 Zo <em>werkt</em> het
@@ -177,7 +177,7 @@ export default function Home() {
         </section>
 
         <section className="sectie" id="praktijken">
-          <div className="container">
+          <div className="mkt-container">
             <div className="praktijken">
               <div className="orb-p1" />
               <div className="orb-p2" />
@@ -201,7 +201,7 @@ export default function Home() {
         </section>
 
         <section className="sectie">
-          <div className="container quote">
+          <div className="mkt-container quote">
             <blockquote>
               “Binnen twee weken had ik drie gesprekken bij praktijken die echt bij me
               pasten. Zo kan solliciteren dus ook voelen.”
@@ -211,7 +211,7 @@ export default function Home() {
         </section>
 
         <section className="footer-cta">
-          <div className="container">
+          <div className="mkt-container">
             <h2>
               Klaar voor werk dat <em>werkt</em>?
             </h2>
@@ -228,7 +228,7 @@ export default function Home() {
       </main>
 
       <footer className="footer">
-        <div className="container footer-inner">
+        <div className="mkt-container footer-inner">
           <a className="wordmark" href="#">
             <Wordmark />
           </a>

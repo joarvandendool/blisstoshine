@@ -1,0 +1,448 @@
+// Mondzorgwerkt — multi-tenant datamodel.
+// Domeinregels staan in src/domain; dit schema is de opslagvorm.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- identiteit ----------
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String
+  name            String
+  isPlatformAdmin Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+
+  memberships      Membership[]
+  candidateProfile CandidateProfile?
+  applications     Application[]
+  invitations      Invitation[]
+  auditLogs        AuditLog[]
+}
+
+// ---------- praktijkorganisaties (tenants) ----------
+
+enum OrgStatus {
+  active
+  suspended
+  archived
+}
+
+model Organization {
+  id                String     @id @default(cuid())
+  name              String
+  slug              String     @unique
+  status            OrgStatus  @default(active)
+  // bedrijfsgegevens
+  kvkNumber         String?
+  billingEmail      String?
+  acquisitionSource String?
+  createdAt         DateTime   @default(now())
+  archivedAt        DateTime?
+
+  locations       PracticeLocation[]
+  memberships     Membership[]
+  vacancies       Vacancy[]
+  subscriptions   Subscription[]
+  billingCustomer BillingCustomer?
+  usageEvents     UsageEvent[]
+  auditLogs       AuditLog[]
+}
+
+model PracticeLocation {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  street         String?
+  houseNumber    String?
+  city           String
+  postcode       String
+  latitude       Float
+  longitude      Float
+  phone          String?
+  treatmentRooms Int      @default(1)
+  // gestructureerde praktijkkenmerken (taxonomiesleutels)
+  traits             String[] @default([])
+  equipment          String[] @default([])
+  software           String[] @default([])
+  specializations    String[] @default([])
+  patientPopulation  String[] @default([])
+  createdAt      DateTime @default(now())
+
+  vacancies Vacancy[]
+
+  @@index([organizationId])
+}
+
+enum MemberRole {
+  owner
+  admin
+  recruiter
+  hiring_manager
+  viewer
+}
+
+enum MembershipStatus {
+  active
+  invited
+  revoked
+}
+
+model Membership {
+  id             String           @id @default(cuid())
+  userId         String
+  user           User             @relation(fields: [userId], references: [id])
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id])
+  role           MemberRole
+  status         MembershipStatus @default(active)
+  createdAt      DateTime         @default(now())
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+}
+
+// ---------- kandidaten ----------
+
+enum CandidateStatus {
+  draft
+  active
+  paused
+  archived
+}
+
+enum ProfileVisibility {
+  visible    // naam zichtbaar voor praktijken met match
+  anonymous  // alleen geanonimiseerd profiel tot kandidaat toestemming geeft
+  hidden     // onvindbaar; alleen zelf solliciteren
+}
+
+model CandidateProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  role            String // taxonomie: tandarts, mondhygienist, …
+  experienceLevel String // starter | medior | senior
+  postcode        String
+  latitude        Float
+  longitude       Float
+  maxTravelMinutes Int   @default(30)
+
+  hoursMin      Int
+  hoursMax      Int
+  contractTypes String[] @default([]) // loondienst, zzp, …
+  availableFrom DateTime?
+  salaryMin     Int? // eurocenten p/m bij loondienst
+  salaryMax     Int?
+  hourlyRateMin Int? // eurocenten p/u bij zzp
+
+  // beschikbaarheid per weekdag+dagdeel: { ma: { ochtend: "preferred" | "available" | "unavailable", … }, … }
+  availability Json
+
+  equipmentExperience    String[] @default([])
+  equipmentWantsToWork   String[] @default([])
+  techniquesWantsToLearn String[] @default([])
+  softwareSkills         String[] @default([])
+  specializations        String[] @default([])
+  treatmentInterests     String[] @default([])
+  preferredPopulation    String[] @default([])
+
+  mentorshipNeeded      Boolean  @default(false)
+  developmentGoals      String[] @default([])
+  preferredPracticeSize String? // klein | middel | groot | geen_voorkeur
+  workPace              String? // rustig | gemiddeld | hoog | geen_voorkeur
+  teamPreferences       String[] @default([])
+
+  visibility        ProfileVisibility @default(anonymous)
+  anonymitySettings Json?
+  completenessScore Int               @default(0)
+  status            CandidateStatus   @default(draft)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, role])
+}
+
+// ---------- vacatures ----------
+
+enum VacancyStatus {
+  draft
+  published
+  paused
+  filled
+  expired
+}
+
+model Vacancy {
+  id             String        @id @default(cuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  locationId     String
+  location       PracticeLocation @relation(fields: [locationId], references: [id])
+
+  title           String
+  role            String
+  description     String?
+  experienceLevel String? // minimaal gewenst niveau
+
+  // werkdagen/dagdelen: { ma: { ochtend: "required" | "preferred" | null, … }, … }
+  schedule Json
+
+  hoursMin      Int
+  hoursMax      Int
+  contractTypes String[] @default([])
+  startBy       DateTime?
+  startByHard   Boolean  @default(false)
+  salaryMin     Int?
+  salaryMax     Int?
+  hourlyRateMax Int?
+
+  // criteria met niveau: { registrations: {…}, equipment: {…}, … }
+  // per criterium: { values: string[], level: "required" | "preferred" | "informational" }
+  criteria Json
+
+  culture       String[] @default([]) // praktijkcultuur-taxonomie
+  mentorship    Boolean  @default(false)
+  development   String[] @default([]) // ontwikkelmogelijkheden
+  flexibilityNote String?
+
+  status      VacancyStatus @default(draft)
+  publishedAt DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  applications Application[]
+  invitations  Invitation[]
+  snapshots    MatchSnapshot[]
+
+  @@index([organizationId, status])
+  @@index([status, role])
+}
+
+// ---------- match-vastlegging ----------
+
+enum SnapshotContext {
+  match_view
+  invitation
+  application
+  simulation
+}
+
+model MatchSnapshot {
+  id              String          @id @default(cuid())
+  vacancyId       String
+  vacancy         Vacancy         @relation(fields: [vacancyId], references: [id])
+  candidateUserId String
+  context         SnapshotContext
+  score           Int
+  label           String
+  algorithmVersion String
+  result          Json // volledige MatchResult
+  profileData     Json // bepalende profielgegevens op dat moment
+  vacancyData     Json // bepalende vacaturegegevens op dat moment
+  createdAt       DateTime        @default(now())
+
+  applications Application[]
+  invitations  Invitation[]
+
+  @@index([vacancyId, candidateUserId])
+}
+
+enum ApplicationStatus {
+  submitted
+  in_review
+  interview
+  offered
+  hired
+  rejected
+  withdrawn
+}
+
+model Application {
+  id              String            @id @default(cuid())
+  vacancyId       String
+  vacancy         Vacancy           @relation(fields: [vacancyId], references: [id])
+  candidateUserId String
+  candidate       User              @relation(fields: [candidateUserId], references: [id])
+  status          ApplicationStatus @default(submitted)
+  motivation      String?
+  matchSnapshotId String?
+  matchSnapshot   MatchSnapshot?    @relation(fields: [matchSnapshotId], references: [id])
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@unique([vacancyId, candidateUserId])
+  @@index([candidateUserId])
+}
+
+enum InvitationStatus {
+  sent
+  accepted
+  declined
+  expired
+}
+
+model Invitation {
+  id              String           @id @default(cuid())
+  vacancyId       String
+  vacancy         Vacancy          @relation(fields: [vacancyId], references: [id])
+  candidateUserId String
+  candidate       User             @relation(fields: [candidateUserId], references: [id])
+  status          InvitationStatus @default(sent)
+  message         String?
+  matchSnapshotId String?
+  matchSnapshot   MatchSnapshot?   @relation(fields: [matchSnapshotId], references: [id])
+  createdAt       DateTime         @default(now())
+
+  @@unique([vacancyId, candidateUserId])
+  @@index([candidateUserId])
+}
+
+// ---------- commerciële laag ----------
+
+model Plan {
+  id       String        @id @default(cuid())
+  code     String        @unique // trial | essential | growth | multi_location
+  name     String
+  active   Boolean       @default(true)
+  versions PlanVersion[]
+}
+
+model PlanVersion {
+  id                String        @id @default(cuid())
+  planId            String
+  plan              Plan          @relation(fields: [planId], references: [id])
+  version           Int
+  priceMonthlyCents Int
+  priceYearlyCents  Int
+  currency          String        @default("EUR")
+  active            Boolean       @default(true)
+  createdAt         DateTime      @default(now())
+
+  entitlements  Entitlement[]
+  subscriptions Subscription[]
+
+  @@unique([planId, version])
+}
+
+model Entitlement {
+  id            String      @id @default(cuid())
+  planVersionId String
+  planVersion   PlanVersion @relation(fields: [planVersionId], references: [id])
+  key           String // bv. max_locations, max_active_vacancies, talent_radar, …
+  enabled       Boolean     @default(true)
+  limitInt      Int? // null = onbeperkt (indien enabled)
+  meta          Json?
+
+  @@unique([planVersionId, key])
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  canceled
+}
+
+model Subscription {
+  id             String             @id @default(cuid())
+  organizationId String
+  organization   Organization       @relation(fields: [organizationId], references: [id])
+  planVersionId  String
+  planVersion    PlanVersion        @relation(fields: [planVersionId], references: [id])
+  status         SubscriptionStatus
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean  @default(false)
+  trialEndsAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  items SubscriptionItem[]
+
+  @@index([organizationId, status])
+}
+
+model SubscriptionItem {
+  id             String       @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id])
+  key            String // extra_location | recruiter_seat | invite_pack | …
+  quantity       Int          @default(1)
+
+  @@unique([subscriptionId, key])
+}
+
+model UsageEvent {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  key            String // bv. candidate_invite
+  quantity       Int          @default(1)
+  idempotencyKey String       @unique
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, key, createdAt])
+}
+
+model BillingCustomer {
+  id                 String       @id @default(cuid())
+  organizationId     String       @unique
+  organization       Organization @relation(fields: [organizationId], references: [id])
+  provider           String // local_test | stripe
+  providerCustomerId String
+  meta               Json?
+
+  @@unique([provider, providerCustomerId])
+}
+
+// ---------- analytics, audit, configuratie ----------
+
+model AnalyticsEvent {
+  id                String   @id @default(cuid())
+  name              String // stabiele eventnaam uit src/domain/analytics
+  organizationId    String?
+  locationId        String?
+  userId            String?
+  candidateId       String? // pseudoniem (cuid van profiel, geen naam/e-mail)
+  plan              String?
+  acquisitionSource String?
+  context           Json?
+  createdAt         DateTime @default(now())
+
+  @@index([name, createdAt])
+  @@index([organizationId, createdAt])
+}
+
+model AuditLog {
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  userId         String?
+  user           User?         @relation(fields: [userId], references: [id])
+  action         String // bv. vacancy.publish, subscription.upgrade
+  entity         String
+  entityId       String
+  meta           Json?
+  createdAt      DateTime      @default(now())
+
+  @@index([organizationId, createdAt])
+}
+
+model MatchingConfigVersion {
+  id        String   @id @default(cuid())
+  version   String   @unique // semver, gelijk aan algorithmVersion in code
+  config    Json
+  createdAt DateTime @default(now())
+}
