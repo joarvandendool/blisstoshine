@@ -1,19 +1,19 @@
 // Matchfeed van de kandidaat: begroeting + profielvolledigheid, openstaande
-// uitnodigingen van praktijken prominent bovenaan, daarna de matchkaarten
-// (alleen eligible matches, gesorteerd door de servicelaag). match_viewed
-// wordt pas op de detailpagina getrackt — niet hier in de feed.
+// uitnodigingen van praktijken prominent bovenaan (reageren — met
+// consent-keuze en gestructureerde redenen — gebeurt op
+// /kandidaat/uitnodigingen), daarna de matchkaarten (alleen eligible matches,
+// gesorteerd door de servicelaag). match_viewed wordt pas op de detailpagina
+// getrackt — niet hier in de feed.
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
-import { AuthzError, requireCandidate } from "@/lib/authz";
+import { requireCandidate } from "@/lib/authz";
 import {
   matchesForCandidate,
   type CandidateVacancyMatch,
 } from "@/server/matching";
 import {
   listInvitationsForCandidate,
-  respondToInvitation,
   type CandidateInvitationEntry,
 } from "@/server/invitations";
 import { castSchedule } from "@/server/vacancies";
@@ -22,7 +22,6 @@ import type { CategoryScores, MatchLabel } from "@/domain/matching";
 import { MatchShape, type MatchShapeDimensions } from "@/components/MatchShape";
 import {
   Badge,
-  Button,
   Card,
   EmptyState,
   PageHeader,
@@ -63,24 +62,6 @@ function urenDagenSamenvatting(match: CandidateVacancyMatch): string {
     .map((dag) => dag.charAt(0).toUpperCase() + dag.slice(1))
     .join(", ");
   return `${uren} · ${dagLabels}`;
-}
-
-/* ------------------------------ server action ----------------------------- */
-
-async function beantwoordUitnodiging(
-  invitationId: string,
-  geaccepteerd: boolean,
-): Promise<void> {
-  "use server";
-  await requireCandidate();
-  try {
-    await respondToInvitation(invitationId, geaccepteerd);
-  } catch (fout) {
-    // Al beantwoord of niet (meer) gevonden: de feed toont na revalidatie
-    // gewoon de actuele status — geen harde fout richting de kandidaat.
-    if (!(fout instanceof AuthzError)) throw fout;
-  }
-  revalidatePath("/kandidaat");
 }
 
 /* --------------------------------- pagina --------------------------------- */
@@ -206,7 +187,7 @@ export default async function MatchfeedPagina() {
 /* ------------------------------- deelweergaven ---------------------------- */
 
 const UITNODIGING_STATUS: Record<string, { tekst: string; toon: "blauw" | "roze" | "neutraal" }> = {
-  accepted: { tekst: "Geaccepteerd", toon: "blauw" },
+  accepted: { tekst: "Interesse getoond", toon: "roze" },
   declined: { tekst: "Afgeslagen", toon: "neutraal" },
   expired: { tekst: "Verlopen", toon: "neutraal" },
 };
@@ -243,24 +224,20 @@ function UitnodigingsKaart({ entry }: { entry: CandidateInvitationEntry }) {
             <Badge tone={statusWeergave.toon}>{statusWeergave.tekst}</Badge>
           ) : null}
           <Link
-            href={`/kandidaat/matches/${vacancy.id}`}
+            href="/kandidaat/uitnodigingen"
             className="text-sm font-semibold text-blauw-700 underline-offset-4 hover:underline"
           >
-            Bekijk de match
+            Bekijk je uitnodigingen
           </Link>
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-3">
-          <form action={beantwoordUitnodiging.bind(null, invitation.id, true)}>
-            <Button type="submit" size="sm">
-              Accepteren
-            </Button>
-          </form>
-          <form action={beantwoordUitnodiging.bind(null, invitation.id, false)}>
-            <Button type="submit" variant="secondary" size="sm">
-              Afslaan
-            </Button>
-          </form>
+          <Link
+            href="/kandidaat/uitnodigingen"
+            className="inline-flex items-center justify-center gap-2 rounded-full bg-blauw-600 px-4 py-2 text-sm font-semibold text-white shadow-(--shadow-knop-blauw) transition-colors duration-150 hover:bg-blauw-700 motion-reduce:transition-none"
+          >
+            Bekijk en reageer
+          </Link>
           <Link
             href={`/kandidaat/matches/${vacancy.id}`}
             className="text-sm font-semibold text-blauw-700 underline-offset-4 hover:underline"

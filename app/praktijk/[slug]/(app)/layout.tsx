@@ -35,8 +35,10 @@ export default async function PraktijkAppLayout({
   const basis = `/praktijk/${org.slug}`;
   const nav: AppShellNavItem[] = [
     { href: basis, label: "Dashboard" },
-    { href: `${basis}/vacatures/nieuw`, label: "Nieuwe vacature" },
-    { href: `${basis}/radar`, label: "Talent Radar" },
+    { href: `${basis}/pipeline`, label: "Pipeline" },
+    { href: `${basis}/bezetting`, label: "Bezetting" },
+    { href: `${basis}/vacatures/nieuw`, label: "Vacature" },
+    { href: `${basis}/radar`, label: "Radar" },
     { href: `${basis}/abonnement`, label: "Abonnement" },
   ];
 

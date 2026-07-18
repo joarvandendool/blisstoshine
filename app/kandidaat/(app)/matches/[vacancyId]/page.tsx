@@ -17,17 +17,23 @@ import type { CategoryScores, MatchReason } from "@/domain/matching";
 import { computeMatchWithOpportunities } from "@/domain/opportunity";
 import { castAvailability, profileToMatchCandidate } from "@/server/candidates";
 import { castSchedule, vacancyToMatchVacancy } from "@/server/vacancies";
+import { FEEDBACK_REASON_LABELS } from "@/server/pipeline";
 import { MatchShape, type MatchShapeDimensions } from "@/components/MatchShape";
 import { WeekGrid } from "@/components/WeekGrid";
 import {
   Badge,
+  Button,
   Card,
+  Field,
   ProgressBar,
   ScoreBadge,
   SectionHeading,
+  Select,
+  Textarea,
   cx,
 } from "@/components/ui";
 import { SolliciteerForm } from "./solliciteer-form";
+import { trekTerugAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -189,7 +195,7 @@ export default async function MatchDetailPagina({
         candidateUserId: user.id,
       },
     },
-    select: { status: true, createdAt: true },
+    select: { id: true, status: true, createdAt: true },
   });
 
   // Fire-and-forget: track() faalt nooit hard en houdt het renderen niet op.
@@ -431,7 +437,7 @@ export default async function MatchDetailPagina({
           Solliciteren
         </h2>
         {sollicitatie ? (
-          <Card strong className="flex flex-col gap-2">
+          <Card strong className="flex flex-col gap-3">
             <h3 className="text-lg font-semibold text-ink">Je sollicitatie</h3>
             <div className="flex flex-wrap items-center gap-3">
               <Badge tone="blauw">
@@ -446,6 +452,57 @@ export default async function MatchDetailPagina({
                 })}
               </span>
             </div>
+            {["submitted", "in_review", "interview", "offered"].includes(
+              sollicitatie.status,
+            ) ? (
+              <details className="rounded-2xl bg-white/60 px-4 py-3">
+                <summary className="cursor-pointer text-sm font-semibold text-ink/70">
+                  Sollicitatie intrekken
+                </summary>
+                <form
+                  action={trekTerugAction.bind(null, vacature.id, sollicitatie.id)}
+                  className="mt-3 flex flex-col gap-3"
+                >
+                  <Field
+                    label="Reden"
+                    htmlFor="intrekken-reden"
+                    hint="Optioneel — je reden helpt ons betere matches voor je te vinden."
+                  >
+                    <Select
+                      id="intrekken-reden"
+                      name="reasonCode"
+                      defaultValue=""
+                      className="sm:max-w-72"
+                    >
+                      <option value="">Liever geen reden opgeven</option>
+                      {Object.entries(FEEDBACK_REASON_LABELS).map(
+                        ([code, tekst]) => (
+                          <option key={code} value={code}>
+                            {tekst}
+                          </option>
+                        ),
+                      )}
+                    </Select>
+                  </Field>
+                  <Field label="Toelichting" htmlFor="intrekken-note">
+                    <Textarea
+                      id="intrekken-note"
+                      name="note"
+                      rows={3}
+                      maxLength={500}
+                    />
+                  </Field>
+                  <Button
+                    type="submit"
+                    variant="secondary"
+                    size="sm"
+                    className="self-start"
+                  >
+                    Sollicitatie intrekken
+                  </Button>
+                </form>
+              </details>
+            ) : null}
           </Card>
         ) : result.eligible ? (
           <Card strong className="flex flex-col gap-4">

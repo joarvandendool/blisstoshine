@@ -10,7 +10,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { AuthzError, requireCandidate } from "@/lib/authz";
 import { EntitlementError } from "@/lib/billing";
-import { applyToVacancy } from "@/server/applications";
+import { applyToVacancy, withdrawApplication } from "@/server/applications";
+import { FEEDBACK_REASON_CODES } from "@/server/pipeline";
 
 export type SolliciteerFormState =
   | { status: "gelukt" }
@@ -64,4 +65,43 @@ export async function solliciteerAction(
   // het formulier.
   revalidatePath(`/kandidaat/matches/${parsed.data.vacancyId}`);
   return { status: "gelukt" };
+}
+
+// ---------------------------------------------------------------------------
+// Sollicitatie intrekken (met hetzelfde feedback-dialoog als afwijzen)
+// ---------------------------------------------------------------------------
+
+const trekTerugSchema = z.object({
+  reasonCode: z.enum(FEEDBACK_REASON_CODES).optional(),
+  note: z.string().trim().max(500).optional(),
+});
+
+/**
+ * Kandidaat trekt de eigen sollicitatie terug. De reden is optioneel maar
+ * wordt — indien opgegeven — als gestructureerde feedback vastgelegd
+ * (withdrawApplication → recordDecisionFeedback).
+ */
+export async function trekTerugAction(
+  vacancyId: string,
+  applicationId: string,
+  formData: FormData,
+): Promise<void> {
+  await requireCandidate();
+
+  const parsed = trekTerugSchema.safeParse({
+    reasonCode: formData.get("reasonCode")?.toString() || undefined,
+    note: formData.get("note")?.toString() ?? "",
+  });
+
+  try {
+    await withdrawApplication(applicationId, {
+      reasonCode: parsed.success ? parsed.data.reasonCode : undefined,
+      note: parsed.success ? parsed.data.note || undefined : undefined,
+    });
+  } catch (fout) {
+    // Al afgerond of verdwenen: na revalidatie toont de pagina de actuele
+    // stand — geen harde fout richting de kandidaat.
+    if (!(fout instanceof AuthzError)) throw fout;
+  }
+  revalidatePath(`/kandidaat/matches/${vacancyId}`);
 }

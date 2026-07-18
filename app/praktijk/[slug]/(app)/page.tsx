@@ -1,11 +1,11 @@
 // Praktijkdashboard: bezettingsstatus van gepubliceerde vacatures bovenaan
 // (dagen gevraagd + aantal sterke matches via candidatesForVacancy), de
 // plan-badge met resterende trial-dagen, en de vacaturelijst met per vacature
-// een compacte sollicitaties-pipeline (listApplicationsForVacancy) inclusief
-// statusknoppen (updateApplicationStatus). Lege staat: één grote CTA.
+// een compacte pipeline-samenvatting (tellingen + recente kandidaten). Het
+// echte pipelinebeheer — gesprekken, aanbiedingen, afwijzen met reden — leeft
+// op /praktijk/[slug]/pipeline. Lege staat: één grote CTA.
 
 import Link from "next/link";
-import { revalidatePath } from "next/cache";
 import type { ApplicationStatus, VacancyStatus } from "@prisma/client";
 import { getOrgForUserBySlug } from "@/server/organizations";
 import {
@@ -16,17 +16,14 @@ import {
 import { candidatesForVacancy } from "@/server/matching";
 import {
   listApplicationsForVacancy,
-  updateApplicationStatus,
   type VacancyApplicationEntry,
 } from "@/server/applications";
 import { effectiveEntitlements, getActiveSubscription } from "@/lib/billing";
-import { AuthzError } from "@/lib/authz";
 import { PLAN_CATALOG } from "@/domain/entitlements";
 import { LABEL_THRESHOLDS, type MatchLabel } from "@/domain/matching";
 import { DAYPARTS, WEEKDAYS, label } from "@/domain/taxonomy";
 import {
   Badge,
-  Button,
   Card,
   EmptyState,
   PageHeader,
@@ -118,25 +115,6 @@ function LinkKnop({
   );
 }
 
-/* ------------------------------ server action ----------------------------- */
-
-async function wijzigSollicitatieStatus(
-  slug: string,
-  applicationId: string,
-  status: ApplicationStatus,
-): Promise<void> {
-  "use server";
-  const { ctx } = await getOrgForUserBySlug(slug, "pipeline.manage");
-  try {
-    await updateApplicationStatus(ctx, applicationId, status);
-  } catch (fout) {
-    // Sollicitatie inmiddels verdwenen of al gewijzigd: na revalidatie toont
-    // het dashboard gewoon de actuele stand — geen harde fout.
-    if (!(fout instanceof AuthzError)) throw fout;
-  }
-  revalidatePath(`/praktijk/${slug}`);
-}
-
 /* --------------------------------- pagina --------------------------------- */
 
 export default async function PraktijkDashboard({
@@ -195,7 +173,12 @@ export default async function PraktijkDashboard({
         description="Alles over je vacatures, matches en sollicitaties op één plek."
         actions={
           vacatures.length > 0 ? (
-            <LinkKnop href={`${basis}/vacatures/nieuw`}>Nieuwe vacature</LinkKnop>
+            <>
+              <LinkKnop href={`${basis}/pipeline`} variant="secondary">
+                Pipeline
+              </LinkKnop>
+              <LinkKnop href={`${basis}/vacatures/nieuw`}>Nieuwe vacature</LinkKnop>
+            </>
           ) : undefined
         }
       />
@@ -382,38 +365,41 @@ function VacatureKaart({
 
       {sollicitaties.length > 0 ? (
         <div className="flex flex-col gap-3 rounded-2xl bg-brand-light/40 p-4">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm font-medium text-ink/80">
-            <span className="font-semibold text-ink">Sollicitaties</span>
-            <span>{nieuw} nieuw</span>
-            <span aria-hidden="true">·</span>
-            <span>{gesprek} in gesprek</span>
-            <span aria-hidden="true">·</span>
-            <span>{aangenomen} aangenomen</span>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm font-medium text-ink/80">
+              <span className="font-semibold text-ink">Sollicitaties</span>
+              <span>{nieuw} nieuw</span>
+              <span aria-hidden="true">·</span>
+              <span>{gesprek} in gesprek</span>
+              <span aria-hidden="true">·</span>
+              <span>{aangenomen} aangenomen</span>
+            </div>
+            <Link
+              href={`${basis}/pipeline`}
+              className="text-sm font-semibold text-blauw-700 underline-offset-4 hover:underline"
+            >
+              Beheer in de pipeline →
+            </Link>
           </div>
           <ul className="flex flex-col gap-2">
-            {sollicitaties.map((entry) => (
-              <SollicitatieRij key={entry.application.id} slug={slug} entry={entry} />
+            {sollicitaties.slice(0, 3).map((entry) => (
+              <SollicitatieRij key={entry.application.id} entry={entry} />
             ))}
           </ul>
+          {sollicitaties.length > 3 ? (
+            <p className="text-sm text-ink/60">
+              +{sollicitaties.length - 3} meer in de pipeline
+            </p>
+          ) : null}
         </div>
       ) : null}
     </Card>
   );
 }
 
-function SollicitatieRij({
-  slug,
-  entry,
-}: {
-  slug: string;
-  entry: VacancyApplicationEntry;
-}) {
+function SollicitatieRij({ entry }: { entry: VacancyApplicationEntry }) {
   const { application, candidateName, snapshot } = entry;
   const status = SOLLICITATIE_STATUS[application.status];
-  const wachtOpReactie =
-    application.status === "submitted" || application.status === "in_review";
-  const inGesprek =
-    application.status === "interview" || application.status === "offered";
 
   return (
     <li className="flex flex-wrap items-center gap-3 rounded-xl bg-white/70 px-3 py-2.5">
@@ -429,44 +415,6 @@ function SollicitatieRij({
           />
         ) : null}
         <Badge tone={status.toon}>{status.tekst}</Badge>
-      </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
-        {wachtOpReactie ? (
-          <>
-            <form
-              action={wijzigSollicitatieStatus.bind(null, slug, application.id, "interview")}
-            >
-              <Button type="submit" size="sm">
-                Plan gesprek
-              </Button>
-            </form>
-            <form
-              action={wijzigSollicitatieStatus.bind(null, slug, application.id, "rejected")}
-            >
-              <Button type="submit" variant="ghost" size="sm">
-                Afwijzen
-              </Button>
-            </form>
-          </>
-        ) : null}
-        {inGesprek ? (
-          <>
-            <form
-              action={wijzigSollicitatieStatus.bind(null, slug, application.id, "hired")}
-            >
-              <Button type="submit" size="sm">
-                Aannemen
-              </Button>
-            </form>
-            <form
-              action={wijzigSollicitatieStatus.bind(null, slug, application.id, "rejected")}
-            >
-              <Button type="submit" variant="ghost" size="sm">
-                Afwijzen
-              </Button>
-            </form>
-          </>
-        ) : null}
       </div>
     </li>
   );

@@ -13,6 +13,7 @@ import { track } from "@/lib/analytics";
 import { audit } from "@/lib/audit";
 import { enforceLimit, recordUsage } from "@/lib/billing";
 import { prisma } from "@/lib/db";
+import { sendNotification } from "@/lib/notifications";
 import { label } from "@/domain/taxonomy";
 import { computeMatchWithOpportunities } from "@/domain/opportunity";
 import { geocodePostcode } from "@/server/geo";
@@ -20,6 +21,16 @@ import { profileToMatchCandidate } from "@/server/candidates";
 import { vacancyToMatchVacancy } from "@/server/vacancies";
 import { saveMatchSnapshot } from "@/server/matching";
 import { planCodeVoorAnalytics } from "@/server/organizations";
+import {
+  grantConsent,
+  hasConsent,
+  notifyPipelineMembers,
+  proposeInterview,
+  recordDecisionFeedback,
+  recordStatusChange,
+  type FeedbackReasonCode,
+  type InterviewSlotInput,
+} from "@/server/pipeline";
 
 /** Sleutel van de lopende kalendermaand, bv. "2026-07". */
 function maandSleutel(nu: Date): string {
@@ -39,12 +50,18 @@ function maandStart(nu: Date): Date {
  * org+vacature+kandidaat+maand, zodat een herhaalde uitnodiging binnen
  * dezelfde maand niet dubbel telt. Er ontstaat nooit een dubbele uitnodiging
  * (upsert op vacature+kandidaat).
+ *
+ * Bij een nieuwe uitnodiging wordt de pipeline-historie bijgeschreven
+ * (invited) en krijgt de kandidaat een idempotente notificatie
+ * (invitation_received). Met `gesprekSlots` worden direct gespreksmomenten
+ * voorgesteld (Interview met status proposed).
  */
 export async function inviteCandidate(
   ctx: OrgContext,
   vacancyId: string,
   candidateUserId: string,
   message?: string,
+  gesprekSlots?: InterviewSlotInput[],
 ): Promise<Invitation> {
   if (!roleCan(ctx.role, "candidate.invite")) {
     throw new AuthzError(`Rol ${ctx.role} mag geen kandidaten uitnodigen`, 403);
@@ -52,7 +69,7 @@ export async function inviteCandidate(
 
   const vacature = await prisma.vacancy.findFirst({
     where: { id: vacancyId, organizationId: ctx.organizationId },
-    include: { location: true },
+    include: { location: true, organization: { select: { name: true } } },
   });
   if (!vacature) throw new AuthzError("Vacature niet gevonden", 404);
 
@@ -93,6 +110,12 @@ export async function inviteCandidate(
 
   // Geen dubbele uitnodigingen: bestaat er al één, dan worden alleen het
   // bericht en de snapshot ververst (de status blijft zoals die is).
+  const bestondAl = await prisma.invitation.findUnique({
+    where: {
+      vacancyId_candidateUserId: { vacancyId: vacature.id, candidateUserId },
+    },
+    select: { id: true },
+  });
   const invitation = await prisma.invitation.upsert({
     where: {
       vacancyId_candidateUserId: { vacancyId: vacature.id, candidateUserId },
@@ -108,6 +131,34 @@ export async function inviteCandidate(
       matchSnapshotId: snapshotId,
     },
   });
+
+  // Journaal: alleen bij een écht nieuwe uitnodiging (herhaald uitnodigen
+  // verandert de status niet).
+  if (!bestondAl) {
+    await recordStatusChange(vacature.id, candidateUserId, {
+      from: "matched",
+      to: "invited",
+      actorType: "practice",
+      actorUserId: ctx.user.id,
+    });
+  }
+
+  // Idempotente notificatie naar de kandidaat: een tweede identieke
+  // uitnodiging levert géén tweede melding op (dedupeKey).
+  await sendNotification({
+    userId: candidateUserId,
+    type: "invitation_received",
+    title: "Persoonlijke uitnodiging ontvangen",
+    body: `${vacature.organization.name} nodigt je uit voor “${vacature.title}” in ${vacature.location.city}.`,
+    href: "/kandidaat/uitnodigingen",
+    dedupeKey: `invite-${vacature.id}-${candidateUserId}`,
+    meta: { vacancyId: vacature.id, invitationId: invitation.id },
+  });
+
+  // Optioneel: direct gespreksmomenten voorstellen bij de uitnodiging.
+  if (gesprekSlots && gesprekSlots.length > 0) {
+    await proposeInterview(ctx, vacature.id, candidateUserId, gesprekSlots);
+  }
 
   await recordUsage(
     ctx.organizationId,
@@ -140,9 +191,9 @@ export async function inviteCandidate(
 export interface VacancyInvitationEntry {
   invitation: Invitation;
   /**
-   * Naam volgens privacy: pas zichtbaar bij visibility "visible" of nadat de
-   * kandidaat de uitnodiging heeft geaccepteerd (bewuste toestemming);
-   * anders geanonimiseerd.
+   * Naam volgens privacy: pas zichtbaar bij visibility "visible" of na
+   * expliciete consent van de kandidaat (CandidateConsent); anders
+   * geanonimiseerd.
    */
   displayName: string;
   snapshot: MatchSnapshot | null;
@@ -168,10 +219,23 @@ export async function listInvitationsForVacancy(
     orderBy: { createdAt: "desc" },
   });
 
+  const consentPerKandidaat = new Map<string, boolean>();
+  for (const uitnodiging of uitnodigingen) {
+    consentPerKandidaat.set(
+      uitnodiging.candidateUserId,
+      await hasConsent(
+        uitnodiging.candidateUserId,
+        ctx.organizationId,
+        vacature.id,
+      ),
+    );
+  }
+
   return uitnodigingen.map(({ matchSnapshot, candidate, ...invitation }) => {
     const profiel = candidate.candidateProfile;
     const naamZichtbaar =
-      invitation.status === "accepted" || profiel?.visibility === "visible";
+      profiel?.visibility === "visible" ||
+      consentPerKandidaat.get(invitation.candidateUserId) === true;
     let displayName: string;
     if (naamZichtbaar) {
       displayName = candidate.name;
@@ -220,18 +284,48 @@ export async function listInvitationsForCandidate(): Promise<CandidateInvitation
   });
 }
 
+export interface InvitationResponseInput {
+  /** true = "Ik heb interesse"; false = afwijzen. */
+  accepted: boolean;
+  /**
+   * Alleen bij interesse: expliciete keuze om naam en contactgegevens met
+   * deze praktijk te delen (grantConsent). Zonder deze keuze blijft de
+   * kandidaat geanonimiseerd zichtbaar.
+   */
+  shareContact?: boolean;
+  /** Alleen bij afwijzen: gestructureerde reden (recordDecisionFeedback). */
+  reasonCode?: FeedbackReasonCode;
+  /** Optionele toelichting bij de reden (max 500 tekens, wordt opgeschoond). */
+  note?: string;
+}
+
 /**
- * Kandidaat beantwoordt een eigen uitnodiging: accepteren of afslaan.
+ * Kandidaat beantwoordt een eigen uitnodiging: interesse tonen of afwijzen.
  * Alleen een nog openstaande uitnodiging (status sent) kan worden beantwoord.
+ *
+ * - Interesse → status accepted, pipeline interested, notificatie naar de
+ *   praktijkleden (invitation_interested) en optioneel consent (shareContact).
+ * - Afwijzen → status declined, pipeline declined en — bij een reasonCode —
+ *   gestructureerde feedback (MatchDecisionFeedback).
  */
 export async function respondToInvitation(
   invitationId: string,
-  accepted: boolean,
+  response: InvitationResponseInput,
 ): Promise<Invitation> {
-  const { user } = await requireCandidate();
+  const { user, profile } = await requireCandidate();
 
   const uitnodiging = await prisma.invitation.findFirst({
     where: { id: invitationId, candidateUserId: user.id },
+    include: {
+      vacancy: {
+        select: {
+          id: true,
+          title: true,
+          locationId: true,
+          organizationId: true,
+        },
+      },
+    },
   });
   if (!uitnodiging) throw new AuthzError("Uitnodiging niet gevonden", 404);
   if (uitnodiging.status !== "sent") {
@@ -240,13 +334,110 @@ export async function respondToInvitation(
 
   const bijgewerkt = await prisma.invitation.update({
     where: { id: uitnodiging.id },
-    data: { status: accepted ? "accepted" : "declined" },
+    data: { status: response.accepted ? "accepted" : "declined" },
   });
 
-  await audit("invitation.respond", "Invitation", uitnodiging.id, {
+  const vacature = uitnodiging.vacancy;
+  const eventBasis = {
     userId: user.id,
-    meta: { accepted },
+    candidateId: profile?.id,
+    organizationId: vacature.organizationId,
+    locationId: vacature.locationId,
+  };
+
+  if (response.accepted) {
+    await recordStatusChange(vacature.id, user.id, {
+      to: "interested",
+      actorType: "candidate",
+      actorUserId: user.id,
+    });
+
+    if (response.shareContact) {
+      await grantConsent(vacature.organizationId, vacature.id);
+    }
+
+    await notifyPipelineMembers(vacature.organizationId, {
+      type: "invitation_interested",
+      title: "Kandidaat heeft interesse",
+      body: `Een kandidaat heeft interesse getoond in je uitnodiging voor “${vacature.title}”.`,
+      dedupeBase: `invitation-interested-${uitnodiging.id}`,
+      meta: { vacancyId: vacature.id, invitationId: uitnodiging.id },
+    });
+
+    await track("invitation_interested", {
+      ...eventBasis,
+      context: {
+        vacancyId: vacature.id,
+        consent: response.shareContact === true,
+      },
+    });
+  } else {
+    await recordStatusChange(vacature.id, user.id, {
+      to: "declined",
+      actorType: "candidate",
+      actorUserId: user.id,
+      reasonCode: response.reasonCode,
+    });
+
+    if (response.reasonCode) {
+      await recordDecisionFeedback({
+        matchSnapshotId: uitnodiging.matchSnapshotId,
+        vacancyId: vacature.id,
+        candidateUserId: user.id,
+        organizationId: vacature.organizationId,
+        actorType: "candidate",
+        decision: "declined",
+        reasonCode: response.reasonCode,
+        note: response.note,
+      });
+    }
+
+    await track("invitation_declined", {
+      ...eventBasis,
+      context: {
+        vacancyId: vacature.id,
+        reasonCode: response.reasonCode ?? null,
+      },
+    });
+  }
+
+  await audit("invitation.respond", "Invitation", uitnodiging.id, {
+    organizationId: vacature.organizationId,
+    userId: user.id,
+    meta: { accepted: response.accepted, reasonCode: response.reasonCode ?? null },
   });
 
   return bijgewerkt;
+}
+
+/**
+ * Beschouwt de openstaande uitnodigingen van de ingelogde kandidaat als
+ * gezien: de bijbehorende invitation_received-notificaties gaan op gelezen en
+ * per uitnodiging wordt eenmalig invitation_viewed getrackt (de ongelezen
+ * notificatie is het "eerste keer bekeken"-signaal).
+ */
+export async function markInvitationsViewed(): Promise<void> {
+  const { user, profile } = await requireCandidate();
+
+  const ongelezen = await prisma.notification.findMany({
+    where: { userId: user.id, type: "invitation_received", readAt: null },
+    select: { id: true, meta: true },
+  });
+  if (ongelezen.length === 0) return;
+
+  await prisma.notification.updateMany({
+    where: { id: { in: ongelezen.map((n) => n.id) } },
+    data: { readAt: new Date() },
+  });
+
+  for (const notificatie of ongelezen) {
+    const meta = notificatie.meta as Record<string, unknown> | null;
+    const vacancyId =
+      meta && typeof meta.vacancyId === "string" ? meta.vacancyId : null;
+    await track("invitation_viewed", {
+      userId: user.id,
+      candidateId: profile?.id,
+      context: { vacancyId },
+    });
+  }
 }
