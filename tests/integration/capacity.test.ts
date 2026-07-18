@@ -1,9 +1,14 @@
 // Integratietests voor de Praktijkbezetting (src/server/capacity.ts):
 // (a) capacityWeek telt aanwezigheid en markeert een gat als "open";
-// (b) afwezigheid maakt van "volledig" een "gedeeltelijk"/"open";
-// (c) gapToVacancyDraft levert een conceptvacature met de juiste
+// (b) TeamAbsence (getypeerde afwezigheid) maakt van "volledig" een
+//     "gedeeltelijk"/"open" — meerdere periodes per teamlid;
+// (c) contracturen, toekomstige startdatum en verwachte einddatum
+//     beïnvloeden de week (incl. tekort_verwacht binnen 8 weken);
+// (d) per-functie staffingTarget levert dekking per functie op;
+// (e) parttimer-combinaties worden gevonden voor gaten van één functie;
+// (f) gapToVacancyDraft levert een conceptvacature met de juiste
 //     required-dagdelen op;
-// (d) tenant B kan de bezetting van tenant A niet lezen (AuthzError).
+// (g) tenant B kan de bezetting van tenant A niet lezen (AuthzError).
 
 import { describe, it, expect, beforeAll, vi } from "vitest";
 
@@ -26,20 +31,24 @@ vi.mock("next/headers", async () => {
 import { AuthzError, requireMembership } from "@/lib/authz";
 import { createOrganizationWithLocation } from "@/server/organizations";
 import {
+  addAbsence,
   capacityWeek,
+  deleteAbsence,
   deleteTeamMember,
   emptyStaffingTarget,
   gapToVacancyDraft,
   listTeamMembers,
+  maandagVan,
   saveStaffingTarget,
   upsertTeamMember,
   type CapacityCell,
+  type RoleStaffingTargets,
   type StaffingTarget,
   type TeamSchedule,
 } from "@/server/capacity";
 import { castSchedule } from "@/server/vacancies";
 import { DAYPARTS, WEEKDAYS, type Daypart, type Weekday } from "@/domain/taxonomy";
-import { alsGebruiker, prepareTestDb, maakGebruiker } from "./helpers";
+import { alsGebruiker, beschikbaarheid, maakKandidaat, prepareTestDb, maakGebruiker } from "./helpers";
 
 /* ------------------------------- hulpfuncties ------------------------------ */
 
@@ -132,47 +141,58 @@ beforeAll(async () => {
 /* ---------------------------------- tests ---------------------------------- */
 
 describe("capacityWeek", () => {
-  it("telt aanwezigheid en markeert een gat als 'open'", async () => {
+  it("telt aanwezigheid en markeert een gat als 'open' (met absoluut/relatief tekort)", async () => {
     const ctxA = await ctxVoorA();
     const week = await capacityWeek(ctxA, locatieA.id);
 
-    // Maandagochtend: 2 aanwezig van gewenst 2 → volledig.
+    // Maandagochtend: 2 aanwezig van gewenst 2 → volledig, geen tekort.
     const maandag = cel(week.cells, "ma", "ochtend");
     expect(maandag.present).toBe(2);
     expect(maandag.target).toBe(2);
     expect(maandag.status).toBe("volledig");
+    expect(maandag.shortage).toBe(0);
+    expect(maandag.shortageRatio).toBe(0);
 
     // Dinsdagochtend: 1 aanwezig van gewenst 1 → volledig.
     const dinsdag = cel(week.cells, "di", "ochtend");
     expect(dinsdag.present).toBe(1);
     expect(dinsdag.status).toBe("volledig");
 
-    // Woensdagmiddag: gewenst 1, niemand ingepland → open.
+    // Woensdagmiddag: gewenst 1, niemand ingepland → open; tekort 1 (100%).
     const woensdag = cel(week.cells, "wo", "middag");
     expect(woensdag.present).toBe(0);
     expect(woensdag.target).toBe(1);
     expect(woensdag.status).toBe("open");
+    expect(woensdag.shortage).toBe(1);
+    expect(woensdag.shortageRatio).toBe(1);
 
     // Privacy: zonder (voldoende) kandidaten in de pool is de teller null.
     expect(woensdag.availableCandidates).toBeNull();
+
+    // Oude totaalvorm: geen per-functie cellen.
+    expect(week.roleTargets).toBeNull();
+    expect(week.roleCells).toHaveLength(0);
+    expect(week.treatmentRooms).toBe(3);
   });
 
-  it("afwezigheid maakt van 'volledig' een 'gedeeltelijk' of 'open'", async () => {
+  it("TeamAbsence maakt van 'volledig' een 'gedeeltelijk' of 'open' (meerdere periodes)", async () => {
     const ctxA = await ctxVoorA();
 
-    // Extra teamlid dat alleen donderdagochtend werkt, deze week afwezig.
+    // Extra teamlid op maandagochtend, deze week afwezig (verlof).
     const nu = new Date();
     const teamlid = await upsertTeamMember(ctxA, locatieA.id, {
       name: "Anouk Peters",
       role: "mondhygienist",
       schedule: teamRooster({ ma: ["ochtend"] }),
-      absentFrom: new Date(nu.getTime() - 7 * DAG_MS),
-      absentUntil: new Date(nu.getTime() + 7 * DAG_MS),
+    });
+    const verlof = await addAbsence(ctxA, teamlid.id, {
+      kind: "verlof",
+      from: new Date(nu.getTime() - 7 * DAG_MS),
+      until: new Date(nu.getTime() + 7 * DAG_MS),
     });
 
     // Maandagochtend heeft nu 3 roosterplekken, maar Anouk is afwezig:
-    // 2 aanwezig van gewenst 2 → nog volledig. Verhoog het minimum naar 3
-    // om het effect van de afwezigheid zichtbaar te maken.
+    // verhoog het minimum naar 3 om het effect zichtbaar te maken.
     await saveStaffingTarget(
       ctxA,
       locatieA.id,
@@ -184,28 +204,37 @@ describe("capacityWeek", () => {
     expect(maandag.present).toBe(2); // Anouk telt niet mee
     expect(maandag.status).toBe("gedeeltelijk");
 
-    // Zonder de afwezigheid is maandagochtend wél volledig (3 van 3).
-    await upsertTeamMember(ctxA, locatieA.id, {
-      id: teamlid.id,
-      name: teamlid.name,
-      role: teamlid.role,
-      schedule: teamRooster({ ma: ["ochtend"] }),
-      absentFrom: null,
-      absentUntil: null,
+    // Meerdere periodes per teamlid: een tweede (toekomstige) ziekteperiode
+    // verandert de huidige week niet, maar bestaat naast het verlof.
+    const ziekte = await addAbsence(ctxA, teamlid.id, {
+      kind: "ziekte",
+      from: new Date(nu.getTime() + 30 * DAG_MS),
+      until: null, // einddatum nog onbekend
     });
+    const team = await listTeamMembers(ctxA, locatieA.id);
+    const anouk = team.find((lid) => lid.id === teamlid.id);
+    expect(anouk?.absences).toHaveLength(2);
+    expect(anouk?.absences.map((a) => a.kind).sort()).toEqual(["verlof", "ziekte"]);
+
+    // Zonder het verlof is maandagochtend wél volledig (3 van 3) — de
+    // toekomstige ziekte zonder einddatum geeft wel een verwacht tekort.
+    await deleteAbsence(ctxA, verlof.id);
+    const zonderVerlof = await capacityWeek(ctxA, locatieA.id);
+    const maandagZonderVerlof = cel(zonderVerlof.cells, "ma", "ochtend");
+    expect(maandagZonderVerlof.present).toBe(3);
+    expect(maandagZonderVerlof.status).toBe("tekort_verwacht");
+    expect(maandagZonderVerlof.shortageExpectedOn).not.toBeNull();
+
+    await deleteAbsence(ctxA, ziekte.id);
     const zonderAfwezigheid = await capacityWeek(ctxA, locatieA.id);
     expect(cel(zonderAfwezigheid.cells, "ma", "ochtend").status).toBe("volledig");
 
-    // Als álle maandagochtend-teamleden afwezig zijn, wordt de cel "open".
+    // Als álle maandagochtend-teamleden afwezig zijn (ziekte), wordt de cel "open".
     for (const lid of await listTeamMembers(ctxA, locatieA.id)) {
-      await upsertTeamMember(ctxA, locatieA.id, {
-        id: lid.id,
-        name: lid.name,
-        role: lid.role,
-        schedule: teamRooster({ ma: ["ochtend"] }),
-        // Ruim om de hele huidige week heen (maandag t/m zondag).
-        absentFrom: new Date(nu.getTime() - 8 * DAG_MS),
-        absentUntil: new Date(nu.getTime() + 14 * DAG_MS),
+      await addAbsence(ctxA, lid.id, {
+        kind: "ziekte",
+        from: new Date(nu.getTime() - 8 * DAG_MS),
+        until: new Date(nu.getTime() + 14 * DAG_MS),
       });
     }
     const allesAfwezig = await capacityWeek(ctxA, locatieA.id);
@@ -213,23 +242,177 @@ describe("capacityWeek", () => {
     expect(maandagOpen.present).toBe(0);
     expect(maandagOpen.status).toBe("open");
 
-    // Opruimen: Anouk weer verwijderen en roosters herstellen voor de
-    // overige tests (de andere leden krijgen hun oorspronkelijke rooster).
+    // Opruimen: Anouk verwijderen en alle afwezigheden weghalen.
     await deleteTeamMember(ctxA, teamlid.id);
-    const rest = await listTeamMembers(ctxA, locatieA.id);
-    for (const lid of rest) {
-      await upsertTeamMember(ctxA, locatieA.id, {
-        id: lid.id,
-        name: lid.name,
-        role: lid.role,
-        schedule:
-          lid.name === "Esther Willems"
-            ? teamRooster({ ma: ["ochtend"], di: ["ochtend"] })
-            : teamRooster({ ma: ["ochtend"] }),
-        absentFrom: null,
-        absentUntil: null,
+    for (const lid of await listTeamMembers(ctxA, locatieA.id)) {
+      for (const afwezigheid of lid.absences) {
+        await deleteAbsence(ctxA, afwezigheid.id);
+      }
+    }
+  });
+});
+
+describe("contracturen, instroom en uitstroom", () => {
+  it("contracturen toppen de inzet af (±4 uur per dagdeel, in weekvolgorde)", async () => {
+    const ctxA = await ctxVoorA();
+
+    // Petra staat op drie ochtenden ingeroosterd maar heeft 8 contracturen
+    // (= 2 dagdelen): alleen maandag en dinsdag tellen mee, woensdag niet.
+    const petra = await upsertTeamMember(ctxA, locatieA.id, {
+      name: "Parttime Petra",
+      role: "tandarts",
+      schedule: teamRooster({ ma: ["ochtend"], di: ["ochtend"], wo: ["ochtend"] }),
+      contractHours: 8,
+    });
+
+    const week = await capacityWeek(ctxA, locatieA.id);
+    expect(cel(week.cells, "ma", "ochtend").present).toBe(3); // Esther, Bas, Petra
+    expect(cel(week.cells, "di", "ochtend").present).toBe(2); // Esther, Petra
+    expect(cel(week.cells, "wo", "ochtend").present).toBe(0); // buiten contracturen
+
+    await deleteTeamMember(ctxA, petra.id);
+  });
+
+  it("een toekomstige startdatum telt pas mee vanaf die datum", async () => {
+    const ctxA = await ctxVoorA();
+    const weekStart = maandagVan(new Date());
+    const startOverDrieWeken = new Date(weekStart.getTime() + 21 * DAG_MS);
+
+    const nina = await upsertTeamMember(ctxA, locatieA.id, {
+      name: "Nieuwe Nina",
+      role: "mondhygienist",
+      schedule: teamRooster({ wo: ["middag"] }),
+      startDate: startOverDrieWeken,
+    });
+
+    // Deze week: het woensdagmiddag-gat blijft open.
+    const dezeWeek = await capacityWeek(ctxA, locatieA.id);
+    expect(cel(dezeWeek.cells, "wo", "middag").present).toBe(0);
+    expect(cel(dezeWeek.cells, "wo", "middag").status).toBe("open");
+
+    // Vier weken vooruit is Nina gestart: volledig.
+    const latereWeek = await capacityWeek(ctxA, locatieA.id, {
+      weekStart: new Date(weekStart.getTime() + 28 * DAG_MS),
+    });
+    expect(cel(latereWeek.cells, "wo", "middag").present).toBe(1);
+    expect(cel(latereWeek.cells, "wo", "middag").status).toBe("volledig");
+
+    await deleteTeamMember(ctxA, nina.id);
+  });
+
+  it("een verwachte einddatum (uitstroom) geeft binnen 8 weken 'tekort_verwacht'", async () => {
+    const ctxA = await ctxVoorA();
+    const weekStart = maandagVan(new Date());
+
+    // Vera dekt donderdagavond, maar vertrekt over ~3 weken.
+    await saveStaffingTarget(
+      ctxA,
+      locatieA.id,
+      minimum({ ma: { ochtend: 2 }, di: { ochtend: 1 }, wo: { middag: 1 }, do: { avond: 1 } }),
+    );
+    const vera = await upsertTeamMember(ctxA, locatieA.id, {
+      name: "Vertrekkende Vera",
+      role: "tandarts",
+      schedule: teamRooster({ do: ["avond"] }),
+      endDate: new Date(weekStart.getTime() + 20 * DAG_MS),
+    });
+
+    const week = await capacityWeek(ctxA, locatieA.id);
+    const donderdagAvond = cel(week.cells, "do", "avond");
+    expect(donderdagAvond.present).toBe(1); // nu nog aanwezig
+    expect(donderdagAvond.status).toBe("tekort_verwacht");
+    expect(donderdagAvond.shortageExpectedOn).not.toBeNull();
+    expect(donderdagAvond.shortageExpectedOn!.getTime()).toBeGreaterThan(
+      weekStart.getTime() + 20 * DAG_MS,
+    );
+
+    await deleteTeamMember(ctxA, vera.id);
+    await saveStaffingTarget(
+      ctxA,
+      locatieA.id,
+      minimum({ ma: { ochtend: 2 }, di: { ochtend: 1 }, wo: { middag: 1 } }),
+    );
+  });
+});
+
+describe("staffingTarget per functie", () => {
+  it("levert dekking per functie op, met terugval op de totaalvorm", async () => {
+    const ctxA = await ctxVoorA();
+
+    // Nieuwe vorm: { rol: { ma: { ochtend: n } } }.
+    const perFunctie: RoleStaffingTargets = {
+      tandarts: minimum({ ma: { ochtend: 1 } }),
+      mondhygienist: minimum({ ma: { ochtend: 1 } }),
+    };
+    await saveStaffingTarget(ctxA, locatieA.id, perFunctie);
+
+    const week = await capacityWeek(ctxA, locatieA.id);
+    expect(week.roleTargets).not.toBeNull();
+    // Totaal = som van de functies: 2 op maandagochtend.
+    expect(cel(week.cells, "ma", "ochtend").target).toBe(2);
+
+    const tandartsCel = week.roleCells.find(
+      (c) => c.role === "tandarts" && c.day === "ma" && c.daypart === "ochtend",
+    );
+    const mondhygienistCel = week.roleCells.find(
+      (c) => c.role === "mondhygienist" && c.day === "ma" && c.daypart === "ochtend",
+    );
+    expect(tandartsCel?.present).toBe(1); // Esther
+    expect(tandartsCel?.status).toBe("volledig");
+    expect(mondhygienistCel?.present).toBe(0); // geen mondhygiënist in het team
+    expect(mondhygienistCel?.status).toBe("open");
+    expect(mondhygienistCel?.shortage).toBe(1);
+    expect(mondhygienistCel?.shortageRatio).toBe(1);
+
+    // Terug naar de totaalvorm voor de vervolgstappen.
+    await saveStaffingTarget(
+      ctxA,
+      locatieA.id,
+      minimum({ ma: { ochtend: 2 }, di: { ochtend: 1 }, wo: { middag: 1 } }),
+    );
+    const terug = await capacityWeek(ctxA, locatieA.id);
+    expect(terug.roleTargets).toBeNull();
+    expect(terug.roleCells).toHaveLength(0);
+  });
+});
+
+describe("parttimer-combinaties", () => {
+  it("vindt paren kandidaten die samen de gevraagde dagdelen dekken", async () => {
+    const ctxA = await ctxVoorA();
+
+    // Twee gaten voor de dominante teamrol (tandarts): wo middag + vr ochtend.
+    await saveStaffingTarget(
+      ctxA,
+      locatieA.id,
+      minimum({ wo: { middag: 1 }, vr: { ochtend: 1 } }),
+    );
+
+    // Drie kandidaten die alleen woensdag kunnen en drie die alleen vrijdag
+    // kunnen: geen enkele kandidaat dekt beide dagdelen alleen, maar er zijn
+    // 3 × 3 = 9 combinaties (boven de privacydrempel van 5).
+    for (let i = 1; i <= 3; i += 1) {
+      await maakKandidaat(`combo-wo-${i}@test.nl`, `Combo Wo ${i}`, {
+        role: "tandarts",
+        availability: beschikbaarheid(["wo"]),
+      });
+      await maakKandidaat(`combo-vr-${i}@test.nl`, `Combo Vr ${i}`, {
+        role: "tandarts",
+        availability: beschikbaarheid(["vr"]),
       });
     }
+
+    const week = await capacityWeek(ctxA, locatieA.id);
+    const combo = week.partTimeCombos.find((c) => c.role === "tandarts");
+    expect(combo).toBeDefined();
+    expect(combo?.gaps).toHaveLength(2);
+    expect(combo?.comboCount).toBe(9);
+
+    // Herstel het oorspronkelijke minimum.
+    await saveStaffingTarget(
+      ctxA,
+      locatieA.id,
+      minimum({ ma: { ochtend: 2 }, di: { ochtend: 1 }, wo: { middag: 1 } }),
+    );
   });
 });
 
@@ -298,13 +481,26 @@ describe("tenantisolatie", () => {
     ).rejects.toThrow(AuthzError);
   });
 
-  it("teamleden van tenant A zijn voor tenant B ook per id onvindbaar", async () => {
+  it("teamleden en afwezigheden van tenant A zijn voor tenant B per id onvindbaar", async () => {
     const ctxA = await ctxVoorA();
     const teamA = await listTeamMembers(ctxA, locatieA.id);
     expect(teamA.length).toBeGreaterThan(0);
+    const afwezigheid = await addAbsence(ctxA, teamA[0].id, {
+      kind: "verlof",
+      from: new Date(),
+      until: null,
+    });
 
     alsGebruiker(ownerB.id);
     const ctxB = await requireMembership(orgB.id);
     await expect(deleteTeamMember(ctxB, teamA[0].id)).rejects.toThrow(AuthzError);
+    await expect(
+      addAbsence(ctxB, teamA[0].id, { kind: "ziekte", from: new Date(), until: null }),
+    ).rejects.toThrow(AuthzError);
+    await expect(deleteAbsence(ctxB, afwezigheid.id)).rejects.toThrow(AuthzError);
+
+    // Opruimen.
+    const ctxA2 = await ctxVoorA();
+    await deleteAbsence(ctxA2, afwezigheid.id);
   });
 });

@@ -1,11 +1,13 @@
 // Praktijkbezetting — serverkant. Autorisatie via dé toegangspoort
 // (getOrgForUserBySlug) met capability location.manage: rollen zonder dat
 // recht gaan terug naar het dashboard. Per (gekozen) locatie wordt de
-// bezettingsweek berekend (capacityWeek) en het team geladen
-// (listTeamMembers); alle interactie leeft in bezetting-client.tsx.
+// bezettingsweek berekend (capacityWeek — incl. dekking per functie,
+// behandelkamercapaciteit en parttimer-combinaties), het team geladen
+// (listTeamMembers, incl. TeamAbsence) en de recente scenario's opgehaald;
+// alle interactie leeft in bezetting-client.tsx.
 //
-// Analytics: capacity_planner_viewed wordt hier server-side getrackt bij elk
-// paginabezoek.
+// Analytics: weekly_capacity_planner_viewed (en het bestaande
+// capacity_planner_viewed) worden hier server-side getrackt per paginabezoek.
 
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
@@ -16,7 +18,12 @@ import {
   listLocations,
   planCodeVoorAnalytics,
 } from "@/server/organizations";
-import { capacityWeek, castTeamSchedule, listTeamMembers } from "@/server/capacity";
+import {
+  capacityWeek,
+  castTeamSchedule,
+  listScenarios,
+  listTeamMembers,
+} from "@/server/capacity";
 import { listVacancies } from "@/server/vacancies";
 import { PageHeader } from "@/components/ui";
 import {
@@ -25,6 +32,7 @@ import {
   type BezettingTeamlid,
   type BezettingVacature,
 } from "./bezetting-client";
+import type { ScenarioOverzichtItem, ScenarioSamenvattingClient } from "./scenario-paneel";
 
 export const metadata: Metadata = {
   title: "Praktijkbezetting — mondzorgwerkt",
@@ -33,6 +41,20 @@ export const metadata: Metadata = {
 };
 
 export const dynamic = "force-dynamic";
+
+/** Defensieve extractie van een scenario-samenvatting uit de result-Json. */
+function alsSamenvatting(waarde: unknown): ScenarioSamenvattingClient | null {
+  if (!waarde || typeof waarde !== "object") return null;
+  const v = waarde as Record<string, unknown>;
+  const getal = (x: unknown): number => (typeof x === "number" ? x : 0);
+  return {
+    volledig: getal(v.volledig),
+    gedeeltelijk: getal(v.gedeeltelijk),
+    open: getal(v.open),
+    tekortVerwacht: getal(v.tekortVerwacht),
+    totaalTekort: getal(v.totaalTekort),
+  };
+}
 
 export default async function BezettingPagina({
   params,
@@ -58,6 +80,7 @@ export default async function BezettingPagina({
   }
   const { org, ctx } = toegang;
 
+  // listLocations filtert al op de locatietoewijzing van het membership.
   const alleLocaties = await listLocations(ctx);
   const locaties: BezettingLocatie[] = alleLocaties.map((l) => ({
     id: l.id,
@@ -68,10 +91,11 @@ export default async function BezettingPagina({
     locaties.find((l) => l.id === locatieParam) ?? locaties[0] ?? null;
   if (!geselecteerd) redirect(`/praktijk/${slug}`);
 
-  const [week, team, alleVacatures] = await Promise.all([
+  const [week, team, alleVacatures, scenarioRijen] = await Promise.all([
     capacityWeek(ctx, geselecteerd.id),
     listTeamMembers(ctx, geselecteerd.id),
     listVacancies(ctx),
+    listScenarios(ctx, geselecteerd.id),
   ]);
 
   // Concept- en gepubliceerde vacatures van deze locatie — voor de link
@@ -89,19 +113,57 @@ export default async function BezettingPagina({
     name: teamlid.name,
     role: teamlid.role,
     schedule: castTeamSchedule(teamlid.schedule),
-    absentFrom: teamlid.absentFrom?.toISOString() ?? null,
-    absentUntil: teamlid.absentUntil?.toISOString() ?? null,
+    contractHours: teamlid.contractHours,
+    employmentType: teamlid.employmentType,
+    startDate: teamlid.startDate?.toISOString() ?? null,
+    endDate: teamlid.endDate?.toISOString() ?? null,
+    absences: teamlid.absences.map((afwezigheid) => ({
+      id: afwezigheid.id,
+      kind: afwezigheid.kind,
+      from: afwezigheid.from.toISOString(),
+      until: afwezigheid.until?.toISOString() ?? null,
+      note: afwezigheid.note,
+    })),
     note: teamlid.note,
   }));
 
+  const scenarios: ScenarioOverzichtItem[] = scenarioRijen.map((scenario) => {
+    const result = (scenario.result ?? {}) as Record<string, unknown>;
+    const afterGaps = Array.isArray(result.afterGaps) ? result.afterGaps.length : 0;
+    const kandidaten = Array.isArray(result.candidateProfileIds)
+      ? result.candidateProfileIds.length
+      : 0;
+    return {
+      id: scenario.id,
+      name: scenario.name,
+      kind: scenario.kind,
+      status: scenario.status,
+      createdAt: scenario.createdAt.toISOString(),
+      before: alsSamenvatting(result.before),
+      after: alsSamenvatting(result.after),
+      afterGaps,
+      kandidaten,
+    };
+  });
+
+  const plan = await planCodeVoorAnalytics(ctx.organizationId);
+  const openDagdelen = week.cells.filter((c) => c.status === "open").length;
   await track("capacity_planner_viewed", {
     organizationId: ctx.organizationId,
     locationId: geselecteerd.id,
     userId: ctx.user.id,
-    plan: await planCodeVoorAnalytics(ctx.organizationId),
+    plan,
+    context: { teamleden: teamleden.length, openDagdelen },
+  });
+  await track("weekly_capacity_planner_viewed", {
+    organizationId: ctx.organizationId,
+    locationId: geselecteerd.id,
+    userId: ctx.user.id,
+    plan,
     context: {
       teamleden: teamleden.length,
-      openDagdelen: week.cells.filter((c) => c.status === "open").length,
+      openDagdelen,
+      weekStart: week.weekStart.toISOString().slice(0, 10),
     },
   });
 
@@ -125,10 +187,18 @@ export default async function BezettingPagina({
           ...cel,
           shortageExpectedOn: cel.shortageExpectedOn?.toISOString() ?? null,
         }))}
+        roleCells={week.roleCells.map((cel) => ({
+          ...cel,
+          shortageExpectedOn: cel.shortageExpectedOn?.toISOString() ?? null,
+        }))}
         target={week.target}
+        treatmentRooms={week.treatmentRooms}
+        overCapacity={week.overCapacity}
+        partTimeCombos={week.partTimeCombos}
         minGroupSize={week.minGroupSize}
         teamleden={teamleden}
         vacatures={vacatures}
+        scenarios={scenarios}
       />
     </div>
   );

@@ -35,11 +35,14 @@ import {
 } from "@/domain/taxonomy";
 import type { CapacityStatus, StaffingTarget, TeamSchedule } from "@/server/capacity";
 import {
+  bewaarAfwezigheidAction,
   bewaarMinimumAction,
   bewaarTeamlidAction,
   maakPersoneelsbehoefteAction,
+  verwijderAfwezigheidAction,
   verwijderTeamlidAction,
 } from "./actions";
+import { ScenarioPaneel, type ScenarioOverzichtItem } from "./scenario-paneel";
 
 /* ------------------------------------------------------------------ */
 /* Props (geserialiseerd door page.tsx)                                */
@@ -56,6 +59,10 @@ export interface BezettingCel {
   daypart: Daypart;
   present: number;
   target: number;
+  /** Absoluut tekort (target − present, minimaal 0). */
+  shortage: number;
+  /** Relatief tekort (0..1). */
+  shortageRatio: number;
   status: CapacityStatus;
   /** ISO-datum van het eerste verwachte tekort (alleen bij tekort_verwacht). */
   shortageExpectedOn: string | null;
@@ -63,14 +70,42 @@ export interface BezettingCel {
   availableCandidates: number | null;
 }
 
+export interface BezettingAfwezigheid {
+  id: string;
+  kind: string; // verlof | ziekte | zwangerschapsverlof | anders
+  from: string; // ISO
+  until: string | null; // ISO
+  note: string | null;
+}
+
 export interface BezettingTeamlid {
   id: string;
   name: string;
   role: string;
   schedule: TeamSchedule;
-  absentFrom: string | null; // ISO
-  absentUntil: string | null; // ISO
+  contractHours: number | null;
+  employmentType: string | null;
+  startDate: string | null; // ISO
+  endDate: string | null; // ISO
+  absences: BezettingAfwezigheid[];
   note: string | null;
+}
+
+export interface BezettingRolCel extends BezettingCel {
+  role: string;
+}
+
+export interface BezettingOverCapaciteit {
+  day: Weekday;
+  daypart: Daypart;
+  scheduled: number;
+  rooms: number;
+}
+
+export interface BezettingCombo {
+  role: string;
+  gaps: Array<{ day: Weekday; daypart: Daypart }>;
+  comboCount: number | null;
 }
 
 export interface BezettingVacature {
@@ -88,11 +123,17 @@ export interface BezettingClientProps {
   weekStart: string;
   candidateRole: string;
   cells: BezettingCel[];
+  /** Dekking per functie — alleen gevuld bij een per-functie minimum. */
+  roleCells: BezettingRolCel[];
   target: StaffingTarget;
+  treatmentRooms: number;
+  overCapacity: BezettingOverCapaciteit[];
+  partTimeCombos: BezettingCombo[];
   minGroupSize: number;
   teamleden: BezettingTeamlid[];
   /** Concept- en gepubliceerde vacatures van deze locatie (voor de Match Studio-link). */
   vacatures: BezettingVacature[];
+  scenarios: ScenarioOverzichtItem[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -191,7 +232,7 @@ const STATUS_STIJLEN: Record<CapacityStatus, StatusStijl> = {
     aria: "tekort verwacht door geplande afwezigheid",
     icoon: WaarschuwingIcoon,
     klasse: "border-amber-300 bg-amber-50 text-amber-900",
-    legenda: "Tekort verwacht (binnen 4 weken)",
+    legenda: "Tekort verwacht (binnen 8 weken)",
   },
 };
 
@@ -249,10 +290,15 @@ export function BezettingClient({
   weekStart,
   candidateRole,
   cells,
+  roleCells,
   target,
+  treatmentRooms,
+  overCapacity,
+  partTimeCombos,
   minGroupSize,
   teamleden,
   vacatures,
+  scenarios,
 }: BezettingClientProps) {
   const router = useRouter();
   const basis = `/praktijk/${slug}`;
@@ -484,6 +530,53 @@ export function BezettingClient({
           />
         ) : null}
       </section>
+
+      {/* behandelkamercapaciteit */}
+      {overCapacity.length > 0 ? (
+        <Card role="note" className="flex flex-col gap-2 border border-amber-300 bg-amber-50/80">
+          <h3 className="text-sm font-semibold text-amber-900">
+            Meer teamleden ingeroosterd dan behandelkamers ({treatmentRooms})
+          </h3>
+          <p className="text-sm text-amber-900/80">
+            De dekking telt nooit hoger dan het aantal kamers. Overschrijdingen:{" "}
+            {overCapacity
+              .map(
+                (o) => `${label(o.day)} ${o.daypart} (${o.scheduled} ingeroosterd, ${o.rooms} kamers)`,
+              )
+              .join("; ")}
+            . Overweeg het scenario “Extra behandelkamer”.
+          </p>
+        </Card>
+      ) : null}
+
+      {/* dekking per functie */}
+      {roleCells.length > 0 ? <FunctieDekking roleCells={roleCells} /> : null}
+
+      {/* parttimer-combinaties */}
+      {partTimeCombos.length > 0 ? (
+        <Card className="flex flex-col gap-2">
+          <h3 className="text-base font-semibold text-ink">Parttimer-combinaties</h3>
+          {partTimeCombos.map((combo) => (
+            <p key={combo.role} className="text-sm text-ink/70">
+              <strong className="font-semibold text-ink">{label(combo.role)}</strong> —{" "}
+              {combo.gaps.map((g) => `${label(g.day).toLowerCase()} ${g.daypart}`).join(" + ")}:{" "}
+              {combo.comboCount === null
+                ? `minder dan ${minGroupSize} combinaties van twee kandidaten (uit privacyoverwegingen tonen we geen exact aantal)`
+                : `${combo.comboCount} ${combo.comboCount === 1 ? "combinatie" : "combinaties"} van twee kandidaten die samen alle dagdelen dekken`}
+              .
+            </p>
+          ))}
+        </Card>
+      ) : null}
+
+      {/* scenario-paneel */}
+      <ScenarioPaneel
+        slug={slug}
+        locatieId={locatie.id}
+        locaties={locaties.map((l) => ({ id: l.id, name: l.name }))}
+        teamleden={teamleden.map((t) => ({ id: t.id, name: t.name }))}
+        scenarios={scenarios}
+      />
 
       {/* gewenst minimum */}
       <MinimumFormulier slug={slug} locationId={locatie.id} target={target} />
@@ -987,19 +1080,69 @@ function TeamlidKaart({
     });
   };
 
-  const afwezigheid = afwezigheidTekst(teamlid.absentFrom, teamlid.absentUntil);
+  const verwijderAfwezigheid = (absenceId: string): void => {
+    startTransition(async () => {
+      const res = await verwijderAfwezigheidAction(slug, absenceId);
+      if (!res.ok) {
+        setFout(res.fout);
+        return;
+      }
+      router.refresh();
+    });
+  };
+
+  const dienstverband = [
+    teamlid.employmentType ? DIENSTVERBAND_LABELS[teamlid.employmentType] ?? teamlid.employmentType : null,
+    teamlid.contractHours !== null ? `${teamlid.contractHours} u/wk` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <Card className="flex h-full flex-col gap-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex min-w-0 flex-col">
           <h3 className="truncate text-base font-semibold text-ink">{teamlid.name}</h3>
-          <span className="text-sm text-ink/60">{label(teamlid.role)}</span>
+          <span className="text-sm text-ink/60">
+            {label(teamlid.role)}
+            {dienstverband ? ` — ${dienstverband}` : ""}
+          </span>
         </div>
-        {afwezigheid ? <Badge tone="roze">Afwezig {afwezigheid}</Badge> : null}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {teamlid.startDate && new Date(teamlid.startDate) > new Date() ? (
+            <Badge tone="blauw">Start {korteDatum(teamlid.startDate)}</Badge>
+          ) : null}
+          {teamlid.endDate ? (
+            <Badge tone="roze">Tot {korteDatum(teamlid.endDate)}</Badge>
+          ) : null}
+        </div>
       </div>
 
       <MiniWeek schedule={teamlid.schedule} naam={teamlid.name} />
+
+      {teamlid.absences.length > 0 ? (
+        <ul className="flex flex-col gap-1.5">
+          {teamlid.absences.map((afwezigheid) => (
+            <li key={afwezigheid.id} className="flex items-center justify-between gap-2 text-sm text-ink/70">
+              <span>
+                <Badge tone="roze" className="mr-1.5">
+                  {AFWEZIGHEID_LABELS[afwezigheid.kind] ?? afwezigheid.kind}
+                </Badge>
+                {afwezigheidTekst(afwezigheid.from, afwezigheid.until)}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => verwijderAfwezigheid(afwezigheid.id)}
+                disabled={bezig}
+                aria-label={`Afwezigheid van ${teamlid.name} verwijderen`}
+              >
+                <KruisIcoon />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
       {teamlid.note ? (
         <p className="text-sm leading-relaxed text-ink/70">{teamlid.note}</p>
@@ -1034,11 +1177,80 @@ function TeamlidKaart({
   );
 }
 
-function afwezigheidTekst(van: string | null, tot: string | null): string | null {
-  if (van && tot) return `${korteDatum(van)} – ${korteDatum(tot)}`;
-  if (van) return `vanaf ${korteDatum(van)}`;
-  if (tot) return `t/m ${korteDatum(tot)}`;
-  return null;
+const AFWEZIGHEID_LABELS: Record<string, string> = {
+  verlof: "Verlof",
+  ziekte: "Ziekte",
+  zwangerschapsverlof: "Zwangerschapsverlof",
+  anders: "Anders",
+};
+
+const DIENSTVERBAND_LABELS: Record<string, string> = {
+  loondienst: "Loondienst",
+  zzp: "Zzp",
+  detachering: "Detachering",
+};
+
+function afwezigheidTekst(van: string, tot: string | null): string {
+  if (tot) return `${korteDatum(van)} – ${korteDatum(tot)}`;
+  return `vanaf ${korteDatum(van)}`;
+}
+
+/** Compacte per-functie tabel: dekking en tekort per dag+dagdeel met een gat. */
+function FunctieDekking({ roleCells }: { roleCells: BezettingRolCel[] }) {
+  const metAandacht = roleCells.filter((cel) => cel.target > 0);
+  if (metAandacht.length === 0) return null;
+  const rollen = [...new Set(metAandacht.map((cel) => cel.role))];
+
+  return (
+    <Card className="flex flex-col gap-3">
+      <h3 className="text-base font-semibold text-ink">Dekking per functie</h3>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-96 text-left text-sm">
+          <thead>
+            <tr className="text-xs font-semibold uppercase tracking-wide text-ink/60">
+              <th scope="col" className="py-1.5 pr-3">Functie</th>
+              <th scope="col" className="py-1.5 pr-3">Dagdeel</th>
+              <th scope="col" className="py-1.5 pr-3">Dekking</th>
+              <th scope="col" className="py-1.5 pr-3">Tekort</th>
+              <th scope="col" className="py-1.5">Kandidaten</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rollen.flatMap((rol) =>
+              metAandacht
+                .filter((cel) => cel.role === rol && (cel.shortage > 0 || cel.status === "tekort_verwacht"))
+                .map((cel) => (
+                  <tr key={`${rol}:${cel.day}:${cel.daypart}`} className="border-t border-ink/10">
+                    <td className="py-1.5 pr-3 font-medium text-ink">{label(rol)}</td>
+                    <td className="py-1.5 pr-3 text-ink/80">
+                      {label(cel.day)} {cel.daypart}
+                      {cel.status === "tekort_verwacht" && cel.shortageExpectedOn
+                        ? ` (tekort vanaf ${korteDatum(cel.shortageExpectedOn)})`
+                        : ""}
+                    </td>
+                    <td className="py-1.5 pr-3 tabular-nums text-ink/80">
+                      {cel.present}/{cel.target}
+                    </td>
+                    <td className="py-1.5 pr-3 tabular-nums text-ink/80">
+                      {cel.shortage > 0
+                        ? `${cel.shortage} (${Math.round(cel.shortageRatio * 100)}%)`
+                        : "—"}
+                    </td>
+                    <td className="py-1.5 tabular-nums text-ink/80">
+                      {cel.availableCandidates ?? "< drempel"}
+                    </td>
+                  </tr>
+                )),
+            )}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-ink/50">
+        Alleen dagdelen met een (verwacht) tekort worden getoond. Tekort is absoluut en relatief
+        ten opzichte van de gewenste dekking per functie.
+      </p>
+    </Card>
+  );
 }
 
 /** Compacte weergave van de vaste werkdagen: 7 kolommen × 3 stipjes. */
@@ -1101,11 +1313,22 @@ function TeamlidFormulier({
   const [rooster, setRooster] = useState<TeamSchedule>(
     teamlid ? structuredClone(teamlid.schedule) : leegTeamRooster(),
   );
-  const [afwezigVan, setAfwezigVan] = useState(naarDatumVeld(teamlid?.absentFrom ?? null));
-  const [afwezigTot, setAfwezigTot] = useState(naarDatumVeld(teamlid?.absentUntil ?? null));
+  const [contractUren, setContractUren] = useState(
+    teamlid?.contractHours !== null && teamlid?.contractHours !== undefined
+      ? String(teamlid.contractHours)
+      : "",
+  );
+  const [dienstverband, setDienstverband] = useState(teamlid?.employmentType ?? "");
+  const [startDatum, setStartDatum] = useState(naarDatumVeld(teamlid?.startDate ?? null));
+  const [eindDatum, setEindDatum] = useState(naarDatumVeld(teamlid?.endDate ?? null));
   const [notitie, setNotitie] = useState(teamlid?.note ?? "");
   const [fout, setFout] = useState<string | null>(null);
   const [bezig, startTransition] = useTransition();
+
+  // Nieuwe afwezigheid (alleen bij een bestaand teamlid).
+  const [afwezigSoort, setAfwezigSoort] = useState("verlof");
+  const [afwezigVan, setAfwezigVan] = useState("");
+  const [afwezigTot, setAfwezigTot] = useState("");
 
   const wisselDagdeel = (dag: Weekday, dagdeel: Daypart): void => {
     setRooster((huidig) => ({
@@ -1116,6 +1339,11 @@ function TeamlidFormulier({
 
   const opslaan = (): void => {
     setFout(null);
+    const uren = contractUren.trim() === "" ? null : Number.parseInt(contractUren, 10);
+    if (uren !== null && (!Number.isInteger(uren) || uren < 0 || uren > 60)) {
+      setFout("Contracturen moeten tussen 0 en 60 liggen");
+      return;
+    }
     startTransition(async () => {
       const res = await bewaarTeamlidAction(slug, {
         id: teamlid?.id,
@@ -1123,9 +1351,34 @@ function TeamlidFormulier({
         name: naam,
         role: rol,
         schedule: rooster,
-        absentFrom: afwezigVan || null,
-        absentUntil: afwezigTot || null,
+        contractHours: uren,
+        employmentType: dienstverband || null,
+        startDate: startDatum || null,
+        endDate: eindDatum || null,
         note: notitie.trim() || null,
+      });
+      if (!res.ok) {
+        setFout(res.fout);
+        return;
+      }
+      onKlaar();
+    });
+  };
+
+  const voegAfwezigheidToe = (): void => {
+    if (!teamlid) return;
+    setFout(null);
+    if (!afwezigVan) {
+      setFout("Vul de startdatum van de afwezigheid in");
+      return;
+    }
+    startTransition(async () => {
+      const res = await bewaarAfwezigheidAction(slug, {
+        teamMemberId: teamlid.id,
+        kind: afwezigSoort,
+        from: afwezigVan,
+        until: afwezigTot || null,
+        note: null,
       });
       if (!res.ok) {
         setFout(res.fout);
@@ -1198,31 +1451,110 @@ function TeamlidFormulier({
           </div>
         </fieldset>
 
-        {/* afwezigheid plannen */}
+        {/* contract en dienstverband */}
         <fieldset className="flex flex-col gap-3">
-          <legend className="text-sm font-semibold text-ink">
-            Afwezigheid plannen{" "}
-            <span className="font-normal text-ink/60">(vakantie, verlof — optioneel)</span>
-          </legend>
+          <legend className="text-sm font-semibold text-ink">Contract</legend>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Afwezig van" htmlFor="teamlid-afwezig-van">
+            <Field
+              label="Contracturen per week"
+              htmlFor="teamlid-contracturen"
+              hint="Een dagdeel telt als ±4 uur; laat leeg als onbekend."
+            >
               <Input
-                id="teamlid-afwezig-van"
-                type="date"
-                value={afwezigVan}
-                onChange={(e) => setAfwezigVan(e.target.value)}
+                id="teamlid-contracturen"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={60}
+                value={contractUren}
+                onChange={(e) => setContractUren(e.target.value)}
               />
             </Field>
-            <Field label="Tot en met" htmlFor="teamlid-afwezig-tot">
+            <Field label="Dienstverband" htmlFor="teamlid-dienstverband">
+              <Select
+                id="teamlid-dienstverband"
+                value={dienstverband}
+                onChange={(e) => setDienstverband(e.target.value)}
+              >
+                <option value="">Onbekend</option>
+                <option value="loondienst">Loondienst</option>
+                <option value="zzp">Zzp</option>
+                <option value="detachering">Detachering</option>
+              </Select>
+            </Field>
+            <Field
+              label="Startdatum"
+              htmlFor="teamlid-startdatum"
+              hint="Toekomstige start: telt pas mee vanaf die datum."
+            >
               <Input
-                id="teamlid-afwezig-tot"
+                id="teamlid-startdatum"
                 type="date"
-                value={afwezigTot}
-                onChange={(e) => setAfwezigTot(e.target.value)}
+                value={startDatum}
+                onChange={(e) => setStartDatum(e.target.value)}
+              />
+            </Field>
+            <Field
+              label="Verwachte einddatum"
+              htmlFor="teamlid-einddatum"
+              hint="Uitstroom: de planner waarschuwt vooraf voor het gat."
+            >
+              <Input
+                id="teamlid-einddatum"
+                type="date"
+                value={eindDatum}
+                onChange={(e) => setEindDatum(e.target.value)}
               />
             </Field>
           </div>
         </fieldset>
+
+        {/* afwezigheid plannen (TeamAbsence — meerdere periodes mogelijk) */}
+        {teamlid ? (
+          <fieldset className="flex flex-col gap-3">
+            <legend className="text-sm font-semibold text-ink">
+              Afwezigheid plannen{" "}
+              <span className="font-normal text-ink/60">
+                (meerdere periodes mogelijk; verwijderen kan op de teamkaart)
+              </span>
+            </legend>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label="Soort" htmlFor="teamlid-afwezig-soort">
+                <Select
+                  id="teamlid-afwezig-soort"
+                  value={afwezigSoort}
+                  onChange={(e) => setAfwezigSoort(e.target.value)}
+                >
+                  <option value="verlof">Verlof</option>
+                  <option value="ziekte">Ziekte</option>
+                  <option value="zwangerschapsverlof">Zwangerschapsverlof</option>
+                  <option value="anders">Anders</option>
+                </Select>
+              </Field>
+              <Field label="Afwezig van" htmlFor="teamlid-afwezig-van">
+                <Input
+                  id="teamlid-afwezig-van"
+                  type="date"
+                  value={afwezigVan}
+                  onChange={(e) => setAfwezigVan(e.target.value)}
+                />
+              </Field>
+              <Field label="Tot en met" htmlFor="teamlid-afwezig-tot" hint="Leeg = nog onbekend.">
+                <Input
+                  id="teamlid-afwezig-tot"
+                  type="date"
+                  value={afwezigTot}
+                  onChange={(e) => setAfwezigTot(e.target.value)}
+                />
+              </Field>
+            </div>
+            <div>
+              <Button variant="secondary" size="sm" onClick={voegAfwezigheidToe} disabled={bezig}>
+                Afwezigheid toevoegen
+              </Button>
+            </div>
+          </fieldset>
+        ) : null}
 
         <Field label="Notitie" htmlFor="teamlid-notitie" hint="Bijvoorbeeld: werkt om de week op vrijdag.">
           <Input

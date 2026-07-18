@@ -5,6 +5,7 @@ import {
   ANALYTICS_EVENTS,
   AnalyticsEnvelopeSchema,
   CANDIDATE_FUNNEL_EVENTS,
+  CAPACITY_EVENTS,
   COMMERCIAL_EVENTS,
   ENGAGEMENT_EVENTS,
   PRACTICE_FUNNEL_EVENTS,
@@ -51,6 +52,7 @@ describe("eventnamen", () => {
       ...PRACTICE_FUNNEL_EVENTS,
       ...COMMERCIAL_EVENTS,
       ...ENGAGEMENT_EVENTS,
+      ...CAPACITY_EVENTS,
     ]) {
       expect(ANALYTICS_EVENTS).toContain(naam);
     }
@@ -60,7 +62,8 @@ describe("eventnamen", () => {
       CANDIDATE_FUNNEL_EVENTS.length +
         PRACTICE_FUNNEL_EVENTS.length +
         COMMERCIAL_EVENTS.length +
-        ENGAGEMENT_EVENTS.length -
+        ENGAGEMENT_EVENTS.length +
+        CAPACITY_EVENTS.length -
         1,
     );
     expect(

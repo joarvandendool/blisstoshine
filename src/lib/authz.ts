@@ -23,6 +23,12 @@ export interface OrgContext {
   user: SessionUser;
   organizationId: string;
   role: MemberRole;
+  /**
+   * Locatiegebonden rechten uit het membership: null (of afwezig) = toegang
+   * tot alle locaties van de organisatie; anders uitsluitend de genoemde
+   * locatie-id's. Services filteren hierop via allowedLocationIds().
+   */
+  locationIds?: string[] | null;
 }
 
 /** Capabilities per rol — één plek, geen verspreide rolchecks. */
@@ -76,10 +82,15 @@ export async function requireUser(): Promise<SessionUser> {
  * Verifieert dat de ingelogde gebruiker een actief membership heeft bij de
  * organisatie en (optioneel) een capability bezit. Alle organisatie-services
  * accepteren uitsluitend dit context-object.
+ *
+ * Met `locationId` wordt bovendien de locatiegebondenheid van het membership
+ * gecontroleerd: een membership met niet-lege locationIds geeft alleen toegang
+ * tot die locaties (AuthzError 403 anders).
  */
 export async function requireMembership(
   organizationId: string,
   capability?: string,
+  locationId?: string,
 ): Promise<OrgContext> {
   const user = await requireUser();
   const membership = await prisma.membership.findUnique({
@@ -91,7 +102,28 @@ export async function requireMembership(
   if (capability && !roleCan(membership.role, capability)) {
     throw new AuthzError(`Rol ${membership.role} mag dit niet: ${capability}`, 403);
   }
-  return { user, organizationId, role: membership.role };
+  const locationIds = membership.locationIds.length > 0 ? membership.locationIds : null;
+  if (locationId && locationIds && !locationIds.includes(locationId)) {
+    throw new AuthzError("Geen toegang tot deze locatie", 403);
+  }
+  return { user, organizationId, role: membership.role, locationIds };
+}
+
+/**
+ * Locatiegebonden rechten van een context: null = alle locaties van de
+ * organisatie; anders de toegestane locatie-id's. Alle locatie-gebonden
+ * services filteren hun queries hierop.
+ */
+export function allowedLocationIds(ctx: OrgContext): string[] | null {
+  return ctx.locationIds ?? null;
+}
+
+/** Throwt AuthzError (403) wanneer de context geen toegang tot de locatie heeft. */
+export function assertLocationAllowed(ctx: OrgContext, locationId: string): void {
+  const allowed = allowedLocationIds(ctx);
+  if (allowed && !allowed.includes(locationId)) {
+    throw new AuthzError("Geen toegang tot deze locatie", 403);
+  }
 }
 
 /** Eerste actieve organisatie van de gebruiker (voor redirects na login). */

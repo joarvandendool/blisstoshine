@@ -66,17 +66,31 @@ export const ENGAGEMENT_EVENTS = [
   "capacity_gap_to_vacancy",
 ] as const;
 
+/** Bezettingsplanner en staffing-scenario's (Workstream A, fase 2). */
+export const CAPACITY_EVENTS = [
+  "weekly_capacity_planner_viewed",
+  "staffing_gap_detected",
+  "staffing_gap_created",
+  "staffing_scenario_run",
+  "vacancy_created_from_gap",
+  "candidate_invited_from_gap",
+  "staffing_gap_resolved",
+  "capacity_plan_updated",
+] as const;
+
 export type CandidateFunnelEvent = (typeof CANDIDATE_FUNNEL_EVENTS)[number];
 export type PracticeFunnelEvent = (typeof PRACTICE_FUNNEL_EVENTS)[number];
 export type CommercialEvent = (typeof COMMERCIAL_EVENTS)[number];
 export type EngagementEvent = (typeof ENGAGEMENT_EVENTS)[number];
+export type CapacityEvent = (typeof CAPACITY_EVENTS)[number];
 
 /** Alle geldige eventnamen (union van de funnels en de commerciële lus). */
 export type AnalyticsEventName =
   | CandidateFunnelEvent
   | PracticeFunnelEvent
   | CommercialEvent
-  | EngagementEvent;
+  | EngagementEvent
+  | CapacityEvent;
 
 /**
  * Alle eventnamen, gededupliceerd (interview_scheduled komt in beide funnels
@@ -89,6 +103,7 @@ export const ANALYTICS_EVENTS: readonly AnalyticsEventName[] = Object.freeze(
       ...PRACTICE_FUNNEL_EVENTS,
       ...COMMERCIAL_EVENTS,
       ...ENGAGEMENT_EVENTS,
+      ...CAPACITY_EVENTS,
     ]),
   ),
 );
