@@ -63,9 +63,17 @@ inpluggen zonder domeinwijzigingen.
   MRR/upgrade/downgrade/churn) + 15 integratietests (tenantisolatie,
   rolbeperkingen, kandidaatprivacy, radar-privacydrempel, entitlements per
   plan, planversie-pinning, idempotente usage, trial-expiratie).
-- **Playwright e2e** dekt de kritieke flow (profiel → organisatie → vacature →
-  match → simulatie → upgrade-moment → sollicitatie → gesprek/plaatsing →
-  analyticscontrole); zie `e2e/kritieke-flow.spec.ts`.
+- **Playwright e2e: 10/10 groen** (desktopproject, herhaalbaar) over de
+  volledige kritieke flow: profiel → organisatie → vacature → match →
+  trial-vergrendeling → upgrade → simulatie (pool verandert aantoonbaar) →
+  sollicitatie → gesprek/plaatsing → verificatie van alle zeven
+  analytics-events in de database; zie `e2e/kritieke-flow.spec.ts`.
+  De e2e-fase ontdekte en verhielp een echte mobiele bug: een ongelaagde
+  CSS-reset op de marketingpagina overschreef alle Tailwind-spacing,
+  waardoor de "Verder"-knop van de vacaturewizard op mobiel achter de
+  tabbalk viel. In deze sandbox draait het WebKit-project niet
+  (browserdownload geblokkeerd); mobiel is geverifieerd via Chromium op
+  390px-viewport.
 - `npm run lint`, `npm run typecheck`, `npm run build`: allemaal groen.
 - Runtime handmatig geverifieerd: alle kernroutes zonder 500's; simulate-API
   aantoonbaar tenant-scoped (404 cross-tenant, 403 zonder membership, 401

@@ -124,7 +124,7 @@ export function AppShell({
 
       {/* areanavigatie — mobiel als bottom tabs */}
       <nav
-        aria-label="Hoofdnavigatie"
+        aria-label="Hoofdnavigatie (mobiel)"
         className="fixed inset-x-0 bottom-0 z-40 glass-strong rounded-none border-x-0 border-b-0 border-t border-t-ink/5 pb-[env(safe-area-inset-bottom)] md:hidden"
       >
         <ul

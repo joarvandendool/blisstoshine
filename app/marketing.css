@@ -7,20 +7,18 @@
   --achtergrond: #f4f8fc;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+/* Geen eigen *-reset: Tailwinds preflight (globals.css) doet dit al, en een
+   ongelaagde reset zou alle margin/padding-utilities in de app overschrijven. */
 
-html {
-  scroll-behavior: smooth;
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
 }
 
 body {
   font-family: var(--font-sans), system-ui, sans-serif;
   color: var(--inkt);
-  background: var(--achtergrond);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
