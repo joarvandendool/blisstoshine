@@ -118,8 +118,19 @@ export async function registerUser(input: {
   name: string;
 }): Promise<SessionUser> {
   const passwordHash = await bcrypt.hash(input.password, 10);
+
+  // Bootstrap: op een verse database wordt de allereerste gebruiker
+  // platform-admin (voor /intern). Daarna nooit meer automatisch; extra
+  // admins worden bewust gezet via de seed of rechtstreeks in de database.
+  const eersteGebruiker = (await prisma.user.count()) === 0;
+
   const user = await prisma.user.create({
-    data: { email: input.email.toLowerCase().trim(), passwordHash, name: input.name },
+    data: {
+      email: input.email.toLowerCase().trim(),
+      passwordHash,
+      name: input.name,
+      isPlatformAdmin: eersteGebruiker,
+    },
     select: { id: true, email: true, name: true, isPlatformAdmin: true },
   });
   return user;
