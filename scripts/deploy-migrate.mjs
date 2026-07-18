@@ -6,11 +6,18 @@
 import "dotenv/config";
 import { spawnSync } from "node:child_process";
 
-const url =
-  process.env.MIGRATE_DATABASE_URL ??
-  process.env.POSTGRES_URL_NON_POOLING ??
-  process.env.DATABASE_URL ??
-  process.env.POSTGRES_URL;
+// Zelfde schema-regel als src/lib/db.ts: integratie-URL's draaien in het
+// eigen "mondzorgwerkt"-schema zodat bestaande tabellen in "public" van een
+// eerder project onaangeroerd blijven (en P3005 niet optreedt).
+function withAppSchema(u) {
+  if (/[?&]schema=/.test(u)) return u;
+  return u + (u.includes("?") ? "&" : "?") + "schema=mondzorgwerkt";
+}
+
+const expliciet = process.env.MIGRATE_DATABASE_URL ?? process.env.DATABASE_URL;
+const integratie =
+  process.env.POSTGRES_URL_NON_POOLING ?? process.env.POSTGRES_URL;
+const url = expliciet ?? (integratie ? withAppSchema(integratie) : undefined);
 
 if (!url) {
   console.warn("deploy-migrate: geen database-URL gevonden — migraties overgeslagen.");
