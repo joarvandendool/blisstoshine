@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 const vacatures = [
   {
     titel: "Mondhygiënist",
@@ -53,16 +55,16 @@ export default function Home() {
     <>
       <header className="header">
         <div className="mkt-container header-inner">
-          <a className="wordmark" href="/">
+          <Link className="wordmark" href="/">
             <Wordmark />
-          </a>
+          </Link>
           <nav className="nav">
             <a href="#vacatures">Vacatures</a>
             <a href="#zo-werkt-het">Zo werkt het</a>
             <a href="#praktijken">Voor praktijken</a>
-            <a className="btn btn-blauw btn-klein" href="/registreren">
+            <Link className="btn btn-blauw btn-klein" href="/registreren">
               Maak profiel
-            </a>
+            </Link>
           </nav>
         </div>
       </header>
@@ -91,11 +93,11 @@ export default function Home() {
             </div>
 
             <div className="chips">
-              <a className="chip" href="/registreren">Tandarts</a>
-              <a className="chip" href="/registreren">Mondhygiënist</a>
-              <a className="chip" href="/registreren">Tandartsassistent</a>
-              <a className="chip" href="/registreren">Preventieassistent</a>
-              <a className="chip" href="/registreren">Praktijkmanager</a>
+              <Link className="chip" href="/registreren">Tandarts</Link>
+              <Link className="chip" href="/registreren">Mondhygiënist</Link>
+              <Link className="chip" href="/registreren">Tandartsassistent</Link>
+              <Link className="chip" href="/registreren">Preventieassistent</Link>
+              <Link className="chip" href="/registreren">Praktijkmanager</Link>
             </div>
           </div>
         </section>
@@ -146,9 +148,9 @@ export default function Home() {
                   <p className="meta">{v.praktijk}</p>
                   <div className="onder">
                     <span className="salaris">{v.salaris}</span>
-                    <a className="link" href="/registreren">
+                    <Link className="link" href="/registreren">
                       Bekijk →
-                    </a>
+                    </Link>
                   </div>
                 </article>
               ))}
@@ -189,12 +191,12 @@ export default function Home() {
                 vacature, of laat ons actief werven met campagnes op maat.
               </p>
               <div className="acties">
-                <a className="btn btn-roze" href="/registreren?type=praktijk">
+                <Link className="btn btn-roze" href="/registreren?type=praktijk">
                   Plaats een vacature
-                </a>
-                <a className="btn btn-ghost" href="/registreren?type=praktijk">
+                </Link>
+                <Link className="btn btn-ghost" href="/registreren?type=praktijk">
                   Plan een kennismaking
-                </a>
+                </Link>
               </div>
             </div>
           </div>
@@ -216,12 +218,12 @@ export default function Home() {
               Klaar voor werk dat <em>werkt</em>?
             </h2>
             <div className="acties">
-              <a className="btn btn-blauw" href="/registreren">
+              <Link className="btn btn-blauw" href="/registreren">
                 Bekijk alle vacatures
-              </a>
-              <a className="btn btn-ghost" href="/registreren?type=praktijk">
+              </Link>
+              <Link className="btn btn-ghost" href="/registreren?type=praktijk">
                 Voor praktijken
-              </a>
+              </Link>
             </div>
           </div>
         </section>
@@ -229,9 +231,9 @@ export default function Home() {
 
       <footer className="footer">
         <div className="mkt-container footer-inner">
-          <a className="wordmark" href="/">
+          <Link className="wordmark" href="/">
             <Wordmark />
-          </a>
+          </Link>
           <p className="klein">© 2026 mondzorgwerkt · privacy · voorwaarden</p>
         </div>
       </footer>
