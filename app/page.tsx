@@ -53,14 +53,14 @@ export default function Home() {
     <>
       <header className="header">
         <div className="mkt-container header-inner">
-          <a className="wordmark" href="#">
+          <a className="wordmark" href="/">
             <Wordmark />
           </a>
           <nav className="nav">
             <a href="#vacatures">Vacatures</a>
             <a href="#zo-werkt-het">Zo werkt het</a>
             <a href="#praktijken">Voor praktijken</a>
-            <a className="btn btn-blauw btn-klein" href="#">
+            <a className="btn btn-blauw btn-klein" href="/registreren">
               Maak profiel
             </a>
           </nav>
@@ -91,11 +91,11 @@ export default function Home() {
             </div>
 
             <div className="chips">
-              <a className="chip" href="#">Tandarts</a>
-              <a className="chip" href="#">Mondhygiënist</a>
-              <a className="chip" href="#">Tandartsassistent</a>
-              <a className="chip" href="#">Preventieassistent</a>
-              <a className="chip" href="#">Praktijkmanager</a>
+              <a className="chip" href="/registreren">Tandarts</a>
+              <a className="chip" href="/registreren">Mondhygiënist</a>
+              <a className="chip" href="/registreren">Tandartsassistent</a>
+              <a className="chip" href="/registreren">Preventieassistent</a>
+              <a className="chip" href="/registreren">Praktijkmanager</a>
             </div>
           </div>
         </section>
@@ -146,7 +146,7 @@ export default function Home() {
                   <p className="meta">{v.praktijk}</p>
                   <div className="onder">
                     <span className="salaris">{v.salaris}</span>
-                    <a className="link" href="#">
+                    <a className="link" href="/registreren">
                       Bekijk →
                     </a>
                   </div>
@@ -189,10 +189,10 @@ export default function Home() {
                 vacature, of laat ons actief werven met campagnes op maat.
               </p>
               <div className="acties">
-                <a className="btn btn-roze" href="#">
+                <a className="btn btn-roze" href="/registreren?type=praktijk">
                   Plaats een vacature
                 </a>
-                <a className="btn btn-ghost" href="#">
+                <a className="btn btn-ghost" href="/registreren?type=praktijk">
                   Plan een kennismaking
                 </a>
               </div>
@@ -216,10 +216,10 @@ export default function Home() {
               Klaar voor werk dat <em>werkt</em>?
             </h2>
             <div className="acties">
-              <a className="btn btn-blauw" href="#">
+              <a className="btn btn-blauw" href="/registreren">
                 Bekijk alle vacatures
               </a>
-              <a className="btn btn-ghost" href="#">
+              <a className="btn btn-ghost" href="/registreren?type=praktijk">
                 Voor praktijken
               </a>
             </div>
@@ -229,7 +229,7 @@ export default function Home() {
 
       <footer className="footer">
         <div className="mkt-container footer-inner">
-          <a className="wordmark" href="#">
+          <a className="wordmark" href="/">
             <Wordmark />
           </a>
           <p className="klein">© 2026 mondzorgwerkt · privacy · voorwaarden</p>
