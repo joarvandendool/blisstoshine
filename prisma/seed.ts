@@ -44,6 +44,23 @@ import { berekenCompleteness, profileToMatchCandidate } from "@/server/candidate
 import { vacancyToMatchVacancy } from "@/server/vacancies";
 
 // ---------------------------------------------------------------------------
+// Productieguard
+// ---------------------------------------------------------------------------
+
+// Deze seed plaatst demo-data mét bekende demo-wachtwoorden (waaronder een
+// platform-admin) en mag daarom nooit per ongeluk tegen een productiedatabase
+// draaien. Alleen bewust te omzeilen met SEED_FORCE=1.
+if (process.env.APP_ENV === "production" && process.env.SEED_FORCE !== "1") {
+  console.error(
+    "Seed geweigerd: APP_ENV=production. Deze seed plaatst demo-data en " +
+      "demo-wachtwoorden (o.a. een platform-adminaccount) en hoort niet op " +
+      "productie te draaien. Weet je zeker dat je dit wilt? Draai dan " +
+      "opnieuw met SEED_FORCE=1.",
+  );
+  process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
 // Inloggegevens (demo)
 // ---------------------------------------------------------------------------
 

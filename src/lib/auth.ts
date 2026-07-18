@@ -11,15 +11,31 @@ import { prisma } from "./db";
 const COOKIE_NAME = "mz_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 14; // 14 dagen
 
-let derivedWarningShown = false;
+// Productiewaarschuwing bij elke koude start (module-init draait één keer per
+// nieuwe serverless-instantie; bewust niet verder geflagd): zonder eigen
+// SESSION_SECRET is het sessiegeheim afgeleid van de database-URL en kan
+// iedereen met leestoegang tot die URL sessietokens smeden.
+if (
+  process.env.NODE_ENV === "production" &&
+  !(process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 32)
+) {
+  console.warn(
+    "SESSION_SECRET niet gezet — sessiegeheim wordt afgeleid van de database-URL. " +
+      "Zet vóór echte livegang een eigen SESSION_SECRET (openssl rand -hex 32); " +
+      "let op: rotatie logt alle sessies uit. Zie DEPLOYMENT.md.",
+  );
+}
 
 /**
  * Sessiegeheim. Voorkeur: expliciete SESSION_SECRET (>= 32 tekens). Fallback:
  * afgeleid via HMAC uit de database-connectiestring die de Vercel/Supabase-
  * integratie injecteert — die is geheim en heeft hoge entropie, en de
- * afleiding is deterministisch over alle serverless-instanties. Rotatie van
- * de databasecredentials logt dan wel alle sessies uit; zet daarom in
- * productie bij voorkeur alsnog een eigen SESSION_SECRET (die wint altijd).
+ * afleiding is deterministisch over alle serverless-instanties. Indien env
+ * SESSION_PEPPER is gezet wordt die als extra statische pepper in de
+ * afleiding verwerkt (zonder pepper blijft de uitkomst ongewijzigd, zodat
+ * bestaande sessies geldig blijven). Rotatie van de databasecredentials of
+ * de pepper logt alle sessies uit; zet daarom in productie een eigen
+ * SESSION_SECRET (die wint altijd). Zie DEPLOYMENT.md.
  */
 export function secret(): string {
   const s = process.env.SESSION_SECRET;
@@ -31,14 +47,10 @@ export function secret(): string {
     process.env.POSTGRES_URL ??
     process.env.DATABASE_URL;
   if (bron) {
-    if (!derivedWarningShown && process.env.NODE_ENV === "production") {
-      derivedWarningShown = true;
-      console.warn(
-        "SESSION_SECRET niet gezet — sessiegeheim afgeleid van de database-URL. " +
-          "Zet voor productie een eigen SESSION_SECRET (openssl rand -hex 32).",
-      );
-    }
-    return createHmac("sha256", "mondzorgwerkt-sessie-v1").update(bron).digest("hex");
+    const hmac = createHmac("sha256", "mondzorgwerkt-sessie-v1").update(bron);
+    const pepper = process.env.SESSION_PEPPER;
+    if (pepper) hmac.update(pepper);
+    return hmac.digest("hex");
   }
 
   throw new Error("SESSION_SECRET ontbreekt of is korter dan 32 tekens");
@@ -118,18 +130,30 @@ export async function registerUser(input: {
   name: string;
 }): Promise<SessionUser> {
   const passwordHash = await bcrypt.hash(input.password, 10);
+  const email = input.email.toLowerCase().trim();
 
-  // Bootstrap: op een verse database wordt de allereerste gebruiker
-  // platform-admin (voor /intern). Daarna nooit meer automatisch; extra
-  // admins worden bewust gezet via de seed of rechtstreeks in de database.
-  const eersteGebruiker = (await prisma.user.count()) === 0;
+  // Bootstrap: platform-admin wordt uitsluitend automatisch toegekend wanneer
+  // het e-mailadres exact overeenkomt met env PLATFORM_ADMIN_EMAIL
+  // (hoofdletterongevoelig) én er nog geen enkele platform-admin bestaat.
+  // Zo kan een verse (of gereset) productieomgeving eenmalig een beheerder
+  // bootstrappen zonder dat "de eerste registrant" vanzelf admin wordt.
+  // Extra admins worden bewust gezet via de seed of rechtstreeks in de
+  // database. Zie DEPLOYMENT.md.
+  const adminEmail = process.env.PLATFORM_ADMIN_EMAIL?.toLowerCase().trim();
+  let wordtPlatformAdmin = false;
+  if (adminEmail && adminEmail === email) {
+    const bestaandeAdmins = await prisma.user.count({
+      where: { isPlatformAdmin: true },
+    });
+    wordtPlatformAdmin = bestaandeAdmins === 0;
+  }
 
   const user = await prisma.user.create({
     data: {
-      email: input.email.toLowerCase().trim(),
+      email,
       passwordHash,
       name: input.name,
-      isPlatformAdmin: eersteGebruiker,
+      isPlatformAdmin: wordtPlatformAdmin,
     },
     select: { id: true, email: true, name: true, isPlatformAdmin: true },
   });

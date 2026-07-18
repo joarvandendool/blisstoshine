@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -9,8 +10,23 @@ import {
   setSessionCookie,
 } from "@/lib/auth";
 import { firstOrganizationOf } from "@/lib/authz";
+import { peekRateLimit, rateLimit } from "@/lib/rate-limit";
 
 export type AuthFormState = { error?: string } | null;
+
+// Generieke melding bij rate limiting/lockout — verklapt bewust niet of het
+// account bestaat of hoeveel pogingen er resteren.
+const TE_VEEL_POGINGEN = "Te veel pogingen. Probeer het over een paar minuten opnieuw.";
+
+const KWARTIER_SECONDEN = 15 * 60;
+const UUR_SECONDEN = 60 * 60;
+
+/** Client-IP uit de proxy-headers; "onbekend" als die ontbreken (dev). */
+async function clientIp(): Promise<string> {
+  const h = await headers();
+  const forwarded = h.get("x-forwarded-for");
+  return forwarded?.split(",")[0]?.trim() || "onbekend";
+}
 
 const registerSchema = z.object({
   name: z.string().min(2, "Vul je naam in"),
@@ -33,6 +49,16 @@ export async function registerAction(
     return { error: parsed.error.errors[0]?.message ?? "Ongeldige invoer" };
   }
   const { name, email, password, accountType } = parsed.data;
+
+  // Registratie-spam beperken: maximaal 5 registraties per uur per IP.
+  const ip = await clientIp();
+  const registratieLimiet = await rateLimit(`register:${ip}`, {
+    limit: 5,
+    windowSeconds: UUR_SECONDEN,
+  });
+  if (!registratieLimiet.allowed) {
+    return { error: TE_VEEL_POGINGEN };
+  }
 
   const existing = await prisma.user.findUnique({
     where: { email: email.toLowerCase().trim() },
@@ -63,10 +89,32 @@ export async function loginAction(
   if (!parsed.success) {
     return { error: parsed.error.errors[0]?.message ?? "Ongeldige invoer" };
   }
+  const email = parsed.data.email.toLowerCase().trim();
 
-  const user = await verifyCredentials(parsed.data.email, parsed.data.password);
+  // Brute force beperken: per e-mailadres én per IP, plus een lockout op
+  // mislukte pogingen (aparte teller die alleen bij een mislukking oploopt;
+  // hier alleen gelezen zodat een vol venster óók een juist wachtwoord blokkeert).
+  const ip = await clientIp();
+  const [perEmail, perIp, mislukteLogins] = await Promise.all([
+    rateLimit(`login:${email}`, { limit: 10, windowSeconds: KWARTIER_SECONDEN }),
+    rateLimit(`login-ip:${ip}`, { limit: 30, windowSeconds: KWARTIER_SECONDEN }),
+    peekRateLimit(`login-fail:${email}`, { limit: 8, windowSeconds: KWARTIER_SECONDEN }),
+  ]);
+  if (!perEmail.allowed || !perIp.allowed || !mislukteLogins.allowed) {
+    return { error: TE_VEEL_POGINGEN };
+  }
+
+  const user = await verifyCredentials(email, parsed.data.password);
   if (!user) {
-    return { error: "E-mailadres of wachtwoord klopt niet" };
+    const naMislukking = await rateLimit(`login-fail:${email}`, {
+      limit: 8,
+      windowSeconds: KWARTIER_SECONDEN,
+    });
+    return {
+      error: naMislukking.allowed
+        ? "E-mailadres of wachtwoord klopt niet"
+        : TE_VEEL_POGINGEN,
+    };
   }
   await setSessionCookie(user.id);
 
