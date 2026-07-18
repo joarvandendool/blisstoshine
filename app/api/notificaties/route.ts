@@ -9,6 +9,7 @@
 
 import { NextResponse } from "next/server";
 import { AuthzError, requireUser } from "@/lib/authz";
+import { assertSameOrigin } from "@/lib/security";
 import {
   listNotifications,
   markAllRead,
@@ -78,8 +79,10 @@ export async function GET(): Promise<NextResponse> {
   }
 }
 
-export async function POST(): Promise<NextResponse> {
+export async function POST(verzoek: Request): Promise<NextResponse> {
   try {
+    // CSRF: muterend cookie-endpoint — alleen eigen origin (src/lib/security.ts).
+    assertSameOrigin(verzoek);
     const user = await requireUser();
     await markAllRead(user.id);
     return NextResponse.json({ ok: true });

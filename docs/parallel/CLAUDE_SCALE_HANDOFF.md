@@ -31,6 +31,7 @@ JSON-LD-presentatie, visuele regressietests.
 | Bestand | Wijziging | Reden | Integratie-impact |
 |---------|-----------|-------|-------------------|
 | `.gitignore` | `.exports/` toegevoegd | CSV-exportjobs (fase 9) schrijven tijdelijke bestanden naar `.exports/<orgId>/<jobId>.csv` | Geen — alleen ignore-regel; geen code geraakt |
+| `next.config.mjs` | `headers()` toegevoegd met security headers (X-Content-Type-Options, X-Frame-Options DENY, Referrer-Policy, Permissions-Policy, HSTS, pragmatische CSP met `script-src 'self' 'unsafe-inline'`) | Productiehardening fase 10: clickjacking/MIME-sniffing/externe scriptinjectie weren | Headers gelden voor ÁLLE routes, ook Codex' publieke pagina's. Externe scripts/styles/fonts/afbeeldingen worden door de CSP geblokkeerd — externe assets moeten self-hosted of als data-URI; inline scripts en styles blijven werken |
 
 ## Publieke API-contracten voor Codex
 

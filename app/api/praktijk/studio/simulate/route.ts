@@ -13,6 +13,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { AuthzError } from "@/lib/authz";
+import { assertSameOrigin } from "@/lib/security";
 import { EntitlementError, enforceEntitlement } from "@/lib/billing";
 import { getOrgForUserBySlug } from "@/server/organizations";
 import {
@@ -108,6 +109,19 @@ const verzoekSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export async function POST(verzoek: Request): Promise<NextResponse> {
+  // CSRF: muterend cookie-endpoint — alleen eigen origin (src/lib/security.ts).
+  try {
+    assertSameOrigin(verzoek);
+  } catch (fout) {
+    if (fout instanceof AuthzError) {
+      return NextResponse.json<SimulatieFoutWire>(
+        { fout: fout.message },
+        { status: fout.status },
+      );
+    }
+    throw fout;
+  }
+
   let body: unknown;
   try {
     body = await verzoek.json();

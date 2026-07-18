@@ -17,6 +17,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { AuthzError, requireMembership, requireUser } from "@/lib/authz";
+import { assertSameOrigin } from "@/lib/security";
 import { track } from "@/lib/analytics";
 import { prisma } from "@/lib/db";
 import { planCodeVoorAnalytics } from "@/server/organizations";
@@ -55,6 +56,16 @@ const verzoekSchema = z
 // ---------------------------------------------------------------------------
 
 export async function POST(verzoek: Request): Promise<NextResponse> {
+  // CSRF: muterend cookie-endpoint — alleen eigen origin (zie src/lib/security.ts).
+  try {
+    assertSameOrigin(verzoek);
+  } catch (fout) {
+    if (fout instanceof AuthzError) {
+      return NextResponse.json({ fout: fout.message }, { status: fout.status });
+    }
+    throw fout;
+  }
+
   let body: unknown;
   try {
     body = await verzoek.json();

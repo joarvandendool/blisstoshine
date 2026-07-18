@@ -179,6 +179,8 @@ model CandidateProfile {
   updatedAt DateTime @updatedAt
 
   @@index([status, role])
+  // Retentie: inactieve draft-profielen op leeftijd (src/server/privacy.ts).
+  @@index([status, updatedAt])
 }
 
 // ---------- vacatures ----------
@@ -237,6 +239,9 @@ model Vacancy {
 
   @@index([organizationId, status])
   @@index([status, role])
+  // Publieke vacaturelijst: status published, gesorteerd op publishedAt desc
+  // (src/server/public/queries.ts).
+  @@index([status, publishedAt])
 }
 
 // ---------- match-vastlegging ----------
@@ -385,6 +390,9 @@ model Subscription {
   items SubscriptionItem[]
 
   @@index([organizationId, status])
+  // Cron applyScheduledChanges: niet-canceled abonnementen op periode-einde
+  // (src/lib/billing/index.ts).
+  @@index([status, currentPeriodEnd])
 }
 
 model SubscriptionItem {
@@ -436,6 +444,8 @@ model AnalyticsEvent {
 
   @@index([name, createdAt])
   @@index([organizationId, createdAt])
+  // Retentie (24 mnd) en 30-dagen-gebruiksvensters (src/server/kpi.ts).
+  @@index([createdAt])
 }
 
 model AuditLog {
@@ -552,6 +562,8 @@ model Notification {
   createdAt DateTime  @default(now())
 
   @@index([userId, readAt, createdAt])
+  // Retentie (6 mnd): opruimen op leeftijd (src/server/privacy.ts).
+  @@index([createdAt])
 }
 
 model NotificationPreference {
@@ -761,6 +773,8 @@ model RateLimitCounter {
   count       Int      @default(1)
 
   @@id([key, windowStart])
+  // Retentie (7 dgn): verlopen vensters over álle keys heen opruimen.
+  @@index([windowStart])
 }
 
 // Idempotente verwerking van inkomende provider-webhooks (fase 4).
