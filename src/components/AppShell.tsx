@@ -9,6 +9,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { cx } from "@/components/ui";
+import { NotificationBell } from "@/components/NotificationBell";
 
 export interface AppShellNavItem {
   href: string;
@@ -96,8 +97,9 @@ export function AppShell({
             </ul>
           </nav>
 
-          {/* gebruiker + uitloggen */}
+          {/* meldingen + gebruiker + uitloggen */}
           <div className="flex items-center gap-3">
+            <NotificationBell />
             <span className="hidden max-w-40 truncate text-sm font-medium text-ink sm:inline">
               {userName}
             </span>

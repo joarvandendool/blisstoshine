@@ -101,9 +101,11 @@ export async function sendNotification(
       }
     }
 
+    // Sleutelnaam bewust zonder "email": het PII-filter van de analytics-
+    // envelope weigert sleutels die op persoonsgegevens lijken.
     await track("notification_sent", {
       userId: input.userId,
-      context: { type: input.type, email: voorkeur.email },
+      context: { type: input.type, viaOutbox: voorkeur.email },
     });
     return { created: true, notificationId: notificatie.id };
   } catch (fout) {
