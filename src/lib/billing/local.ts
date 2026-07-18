@@ -13,8 +13,10 @@ import { audit } from "@/lib/audit";
 import { TRIAL_DAYS } from "@/lib/config";
 import { prisma } from "@/lib/db";
 import {
+  processInboundWebhook,
   syncPlanCatalog,
   type BillingProviderAdapter,
+  type InboundWebhookOutcome,
   type StartSubscriptionOptions,
 } from "./index";
 
@@ -153,6 +155,9 @@ export class LocalTestBillingProvider implements BillingProviderAdapter {
         status: "active",
         trialEndsAt: null,
         cancelAtPeriodEnd: false,
+        graceUntil: null,
+        scheduledPlanVersionId: null,
+        scheduledChangeAt: null,
         currentPeriodStart: now,
         currentPeriodEnd: addMonths(now, 1),
       },
@@ -163,6 +168,125 @@ export class LocalTestBillingProvider implements BillingProviderAdapter {
         from: current.planVersion.plan.code,
         to: planCode,
         toVersion: catalogVersion.version,
+      },
+    });
+  }
+
+  /**
+   * Plant een planwijziging (downgrade) per het einde van de lopende periode:
+   * scheduledPlanVersionId + scheduledChangeAt = currentPeriodEnd. De
+   * daadwerkelijke omzetting gebeurt door applyScheduledChanges() (index.ts).
+   * Idempotent: opnieuw plannen naar hetzelfde plan wijzigt niets wezenlijks;
+   * plannen naar het huidige plan wist een eerdere planning.
+   */
+  async schedulePlanChange(orgId: string, planCode: PlanCode): Promise<void> {
+    await syncPlanCatalog();
+    const current = await prisma.subscription.findFirst({
+      where: { organizationId: orgId, status: { not: "canceled" } },
+      orderBy: { createdAt: "desc" },
+      include: { planVersion: { include: { plan: true } } },
+    });
+    if (!current) {
+      throw new Error(
+        "Geen lopend abonnement om te wijzigen — start eerst een abonnement.",
+      );
+    }
+
+    // Terug naar het huidige plan plannen = een eerdere planning annuleren.
+    if (current.planVersion.plan.code === planCode) {
+      if (current.scheduledPlanVersionId !== null) {
+        await prisma.subscription.update({
+          where: { id: current.id },
+          data: { scheduledPlanVersionId: null, scheduledChangeAt: null },
+        });
+        await audit("subscription.schedule_change.cancel", "Subscription", current.id, {
+          organizationId: orgId,
+          meta: { keptPlan: planCode },
+        });
+      }
+      return;
+    }
+
+    const { row, catalogVersion } = await resolvePlanVersionRow(planCode);
+    if (
+      current.scheduledPlanVersionId === row.id &&
+      current.scheduledChangeAt?.getTime() === current.currentPeriodEnd.getTime()
+    ) {
+      return; // al precies zo gepland — idempotent stil succes
+    }
+
+    await prisma.subscription.update({
+      where: { id: current.id },
+      data: {
+        scheduledPlanVersionId: row.id,
+        scheduledChangeAt: current.currentPeriodEnd,
+      },
+    });
+    await audit("subscription.schedule_change", "Subscription", current.id, {
+      organizationId: orgId,
+      meta: {
+        from: current.planVersion.plan.code,
+        to: planCode,
+        toVersion: catalogVersion.version,
+        changeAt: current.currentPeriodEnd.toISOString(),
+      },
+    });
+  }
+
+  /**
+   * Heractiveert het abonnement:
+   * - lopend abonnement met cancelAtPeriodEnd → opzegging teruggedraaid
+   *   (binnen de lopende periode);
+   * - laatste abonnement is al beëindigd (canceled) → nieuw abonnement op
+   *   hetzelfde plan met een verse maandperiode;
+   * - lopend abonnement zonder opzegging → stille no-op (idempotent).
+   */
+  async reactivateSubscription(orgId: string): Promise<void> {
+    const laatste = await prisma.subscription.findFirst({
+      where: { organizationId: orgId },
+      orderBy: { createdAt: "desc" },
+      include: { planVersion: { include: { plan: true } } },
+    });
+    if (!laatste) {
+      throw new Error(
+        "Geen abonnement om te heractiveren — start eerst een abonnement.",
+      );
+    }
+
+    if (laatste.status !== "canceled") {
+      if (!laatste.cancelAtPeriodEnd) return; // niets terug te draaien
+      await prisma.subscription.update({
+        where: { id: laatste.id },
+        data: { cancelAtPeriodEnd: false },
+      });
+      await audit("subscription.reactivate", "Subscription", laatste.id, {
+        organizationId: orgId,
+        meta: { mode: "opzegging_teruggedraaid" },
+      });
+      return;
+    }
+
+    // Nieuw abonnement op hetzelfde plan (nieuwste actieve catalogusversie).
+    const planCode = laatste.planVersion.plan.code as PlanCode;
+    await syncPlanCatalog();
+    const { row, catalogVersion } = await resolvePlanVersionRow(planCode);
+    const now = new Date();
+    const nieuw = await prisma.subscription.create({
+      data: {
+        organizationId: orgId,
+        planVersionId: row.id,
+        status: "active",
+        currentPeriodStart: now,
+        currentPeriodEnd: addMonths(now, 1),
+      },
+    });
+    await audit("subscription.reactivate", "Subscription", nieuw.id, {
+      organizationId: orgId,
+      meta: {
+        mode: "nieuw_abonnement",
+        planCode,
+        planVersion: catalogVersion.version,
+        previousSubscriptionId: laatste.id,
       },
     });
   }
@@ -190,4 +314,24 @@ export class LocalTestBillingProvider implements BillingProviderAdapter {
       meta: { atPeriodEnd },
     });
   }
+}
+
+/**
+ * Lokale testflow voor inkomende betaal-webhooks: simuleert een
+ * payment_failed- of payment_succeeded-event van de provider "local_test" en
+ * verwerkt het via processInboundWebhook (idempotent op externalId). Met een
+ * expliciete externalId kan idempotentie worden getest; zonder wordt een
+ * uniek test-ID gegenereerd.
+ */
+export async function simulateLocalPaymentEvent(
+  orgId: string,
+  type: "payment_failed" | "payment_succeeded",
+  externalId?: string,
+): Promise<InboundWebhookOutcome> {
+  return processInboundWebhook(
+    PROVIDER,
+    externalId ?? `evt_local_${randomUUID().replaceAll("-", "")}`,
+    type,
+    { organizationId: orgId },
+  );
 }

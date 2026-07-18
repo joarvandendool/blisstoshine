@@ -15,6 +15,8 @@ import { AuthzError, roleCan } from "@/lib/authz";
 import { effectiveEntitlements, getActiveSubscription } from "@/lib/billing";
 import { prisma } from "@/lib/db";
 import {
+  ADDON_CATALOG,
+  ADDON_KEYS,
   ENTITLEMENT_KEYS,
   ENTITLEMENT_LABELS,
   PLAN_CATALOG,
@@ -22,6 +24,7 @@ import {
   entitlementsFor,
   getPlanVersion,
   limitOf,
+  type AddonDefinition,
   type EntitlementKey,
   type EntitlementSet,
 } from "@/domain/entitlements";
@@ -41,6 +44,7 @@ import {
   type PlanKaartData,
   type VergelijkRij,
 } from "./plan-kiezer";
+import { Uitbreidingen, type UitbreidingData } from "./uitbreidingen";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +82,15 @@ function dagenTot(datum: Date): number {
 function aantalTekst(aantal: number | null, enkelvoud: string, meervoud: string): string {
   if (aantal === null) return `Onbeperkt ${meervoud}`;
   return `${aantal} ${aantal === 1 ? enkelvoud : meervoud}`;
+}
+
+/** Effect van een add-on in het Nederlands, uit de catalogusdefinitie. */
+function addonEffectTekst(addon: AddonDefinition): string {
+  if (addon.effect.kind === "limit") {
+    return `+${addon.effect.amountPerUnit} ${ENTITLEMENT_LABELS[addon.effect.entitlement]}`;
+  }
+  const label = ENTITLEMENT_LABELS[addon.effect.entitlement];
+  return `zet ${label} aan`;
 }
 
 /** Compacte limietregels van een plan, afgeleid uit de catalogus. */
@@ -344,6 +357,32 @@ export default async function AbonnementPagina({
     abonnement !== null &&
     !abonnement.cancelAtPeriodEnd &&
     abonnement.planVersion.plan.code !== "trial";
+  const kanHeractiveren = abonnement?.cancelAtPeriodEnd === true;
+
+  /* ---- geplande downgrade (per periode-einde) ---- */
+  const geplandeVersie = abonnement?.scheduledPlanVersionId
+    ? await prisma.planVersion.findUnique({
+        where: { id: abonnement.scheduledPlanVersionId },
+        include: { plan: true },
+      })
+    : null;
+
+  /* ---- uitbreidingen (add-ons) uit de catalogus + huidige items ---- */
+  const uitbreidingenBeschikbaar =
+    abonnement !== null && abonnement.planVersion.plan.code !== "trial";
+  const uitbreidingen: UitbreidingData[] = ADDON_KEYS.map((key) => {
+    const addon = ADDON_CATALOG[key];
+    return {
+      key,
+      naam: addon.name,
+      omschrijving: addon.description,
+      effectTekst: addonEffectTekst(addon),
+      prijsMaandCents: addon.priceMonthlyCents,
+      maxAantal: addon.maxQuantity,
+      huidigAantal:
+        abonnement?.items.find((item) => item.key === key)?.quantity ?? 0,
+    };
+  });
 
   return (
     <div className="flex flex-col gap-10">
@@ -392,6 +431,11 @@ export default async function AbonnementPagina({
             {abonnement?.cancelAtPeriodEnd ? (
               <Badge tone="roze">Opgezegd per periode-einde</Badge>
             ) : null}
+            {geplandeVersie ? (
+              <Badge tone="wit">
+                Downgrade gepland: {geplandeVersie.plan.name}
+              </Badge>
+            ) : null}
           </div>
 
           <div className="flex flex-col gap-1 text-[15px] leading-relaxed text-ink/80">
@@ -426,10 +470,25 @@ export default async function AbonnementPagina({
               </p>
             )}
 
+            {geplandeVersie && abonnement ? (
+              <p>
+                Je downgrade naar{" "}
+                <strong className="font-semibold text-ink">
+                  {geplandeVersie.plan.name}
+                </strong>{" "}
+                gaat in op{" "}
+                {datumLang(abonnement.scheduledChangeAt ?? abonnement.currentPeriodEnd)}
+                ; tot die datum behoud je de functies van je huidige plan.
+              </p>
+            ) : null}
+
             {abonnement?.status === "past_due" ? (
               <p className="font-medium text-roze-800">
                 De laatste verlenging is niet gelukt. Je functies blijven
-                tijdelijk werken; kies hieronder opnieuw een plan om het
+                {abonnement.graceUntil
+                  ? ` werken tot ${datumLang(abonnement.graceUntil)}`
+                  : " tijdelijk werken"}
+                ; kies hieronder opnieuw een plan of herstel de betaling om het
                 abonnement te herstellen.
               </p>
             ) : null}
@@ -465,6 +524,25 @@ export default async function AbonnementPagina({
         </Card>
       </section>
 
+      {/* uitbreidingen (add-ons) */}
+      <section aria-labelledby="uitbreidingen-titel" className="flex flex-col gap-4">
+        <SectionHeading
+          eyebrow="Uitbreidingen"
+          title="Extra ruimte, precies waar je die"
+          accent="nodig hebt"
+          description="Voeg per maand extra locaties, teamleden, vacatures of functies toe aan je plan — de verhoogde limieten gelden per direct en zijn hierboven terug te zien."
+        />
+        <h2 id="uitbreidingen-titel" className="sr-only">
+          Uitbreidingen van je abonnement
+        </h2>
+        <Uitbreidingen
+          slug={org.slug}
+          magBeheren={magBeheren}
+          beschikbaar={uitbreidingenBeschikbaar}
+          uitbreidingen={uitbreidingen}
+        />
+      </section>
+
       {/* planvergelijking + acties */}
       <section aria-labelledby="plannen-titel" className="flex flex-col gap-4">
         <div className="flex flex-col items-start gap-6 sm:flex-row sm:items-center sm:justify-between">
@@ -494,6 +572,7 @@ export default async function AbonnementPagina({
           vergelijking={vergelijking}
           aanbevolenCode={aanbevolenCode}
           kanOpzeggen={kanOpzeggen}
+          kanHeractiveren={kanHeractiveren}
           periodeEindeIso={abonnement?.currentPeriodEnd.toISOString() ?? null}
         />
       </section>

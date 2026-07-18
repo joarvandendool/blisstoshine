@@ -26,6 +26,7 @@ import { Badge, Button, Card, Chip, cx } from "@/components/ui";
 import { MatchShape } from "@/components/MatchShape";
 import {
   annuleerCheckoutAction,
+  heractiveerAction,
   startCheckoutAction,
   wijzigPlanAction,
   zegOpAction,
@@ -72,6 +73,8 @@ export interface PlanKiezerProps {
   aanbevolenCode: string | null;
   /** Alleen tonen wanneer er iets op te zeggen valt. */
   kanOpzeggen: boolean;
+  /** Opgezegd per periode-einde: heractiveren (opzegging terugdraaien) kan. */
+  kanHeractiveren: boolean;
   /** Einde van de lopende periode (ISO), voor de opzegbevestiging. */
   periodeEindeIso: string | null;
 }
@@ -116,6 +119,7 @@ export function PlanKiezer({
   vergelijking,
   aanbevolenCode,
   kanOpzeggen,
+  kanHeractiveren,
   periodeEindeIso,
 }: PlanKiezerProps) {
   const router = useRouter();
@@ -205,6 +209,24 @@ export function PlanKiezer({
     });
   };
 
+  const heractiveer = () => {
+    setMelding(null);
+    setBezigMet("heractiveren");
+    startTransition(async () => {
+      const resultaat = await heractiveerAction(slug);
+      setMelding(resultaat);
+      setBezigMet(null);
+      if (resultaat.ok) router.refresh();
+    });
+  };
+
+  /** Is de overstap naar dit plan een downgrade (gaat per periode-einde in)? */
+  const isDowngrade = (planCode: string): boolean => {
+    if (huidigPlanCode === null || huidigPlanCode === "trial") return false;
+    const huidig = PLAN_VOLGORDE[huidigPlanCode] ?? 0;
+    return (PLAN_VOLGORDE[planCode] ?? 0) < huidig;
+  };
+
   /** Knoptekst: start, upgrade of downgrade — afhankelijk van het huidige plan. */
   const knopTekst = (plan: PlanKaartData): string => {
     if (huidigPlanCode === null || huidigPlanCode === "trial") {
@@ -275,9 +297,22 @@ export function PlanKiezer({
           </div>
           <div className="flex items-center justify-between gap-3">
             <dt className="font-medium text-ink/70">Ingangsdatum</dt>
-            <dd className="font-semibold text-ink">Direct</dd>
+            <dd className="font-semibold text-ink">
+              {isDowngrade(plan.code)
+                ? periodeEindeIso
+                  ? `Per periode-einde (${datumLang(periodeEindeIso)})`
+                  : "Per einde van de lopende periode"
+                : "Direct"}
+            </dd>
           </div>
         </dl>
+
+        {isDowngrade(plan.code) ? (
+          <p className="text-sm leading-relaxed text-ink/70">
+            Een downgrade wordt ingepland per het einde van je lopende periode:
+            tot die datum behoud je alle functies van je huidige plan.
+          </p>
+        ) : null}
 
         <p className="text-sm font-medium text-ink/60">
           Testomgeving — geen echte betaling. Er wordt niets afgeschreven.
@@ -542,6 +577,27 @@ export function PlanKiezer({
         Testomgeving — geen echte betaling. Abonnementen worden in deze release
         gesimuleerd; er wordt niets afgeschreven.
       </p>
+
+      {/* heractiveren: opzegging per periode-einde terugdraaien */}
+      {magBeheren && kanHeractiveren ? (
+        <Card className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-1">
+            <h3 className="text-base font-semibold text-ink">
+              Toch doorgaan met je abonnement?
+            </h3>
+            <p className="text-sm leading-relaxed text-ink/70">
+              Je abonnement is opgezegd
+              {periodeEindeIso ? ` en stopt op ${datumLang(periodeEindeIso)}` : ""}.
+              Draai de opzegging terug en alles loopt gewoon door.
+            </p>
+          </div>
+          <Button onClick={heractiveer} disabled={isPending}>
+            {bezigMet === "heractiveren"
+              ? "Bezig met heractiveren…"
+              : "Heractiveer mijn abonnement"}
+          </Button>
+        </Card>
+      ) : null}
 
       {/* opzeggen, alleen voor beheerders met een lopend abonnement */}
       {magBeheren && kanOpzeggen ? (
