@@ -40,8 +40,12 @@ degene die de productieomgeving draait.
 
 - **Zelfbediening** op `/instellingen/privacy`: inzage (categorie-overzicht),
   export (JSON-download, art. 15/20), correctie (verwijzing naar de
-  profielpagina's), verwijdering (twee-staps, art. 17). Consent per praktijk
-  intrekken kan op de uitnodigingenpagina van de kandidaat.
+  profielpagina's), toestemmingen (sectie "Gedeelde gegevens": actieve
+  consents per praktijk/vacature inzien en per rij intrekken met
+  bevestigingsstap, art. 7 — server action → `revokeConsent`,
+  `src/server/pipeline.ts`, met audit- en analyticsregel) en verwijdering
+  (twee-staps, art. 17). Consent verlénen gebeurt per uitnodiging op de
+  uitnodigingenpagina van de kandidaat.
 - **Verwijdering = directe anonimisering** (`src/server/privacy.ts`): naam →
   "Verwijderde gebruiker", e-mail → `verwijderd+<id>@anon.mondzorgwerkt.nl`,
   wachtwoordhash geroteerd naar een onbruikbare random waarde, kandidaatprofiel

@@ -25,13 +25,13 @@ contactgegevens van een kandidaat.**
   géén naam bij vacature B van een andere locatie — getest in
   `tests/integration/multilocation.test.ts` ("consent voor vacature A geeft
   geen naam bij vacature B").
-- Intrekken bestaat in de servicelaag (`revokeConsent`,
-  `src/server/pipeline.ts:333`, met audit- en analyticsregel). Een
-  kandidaat-UI om verleende consents in te zien of in te trekken is op het
-  moment van schrijven **niet aanwezig in `app/**`** (geen aanroep van
-  `revokeConsent` buiten de servicelaag); `docs/OPERATIONS.md` §3 kondigt
-  deze aan op de uitnodigingenpagina — verifieer bij oplevering van de
-  hardening-fase.
+- Intrekken kan door de kandidaat zelf op `/instellingen/privacy`, sectie
+  "Gedeelde gegevens": alle actieve consents (organisatienaam, eventuele
+  vacaturetitel, datum) met per rij een intrekknop en een expliciete
+  bevestigingsstap (`app/instellingen/privacy/page.tsx`, server action
+  `trekConsentInAction` in `app/instellingen/privacy/actions.ts` →
+  `revokeConsent`, `src/server/pipeline.ts`, met audit- en analyticsregel).
+  Geen kandidaatprofiel of geen actieve consents → nette lege staat.
 
 ## Anonimisering in het product
 
@@ -95,7 +95,7 @@ servicelaag `src/server/privacy.ts`. Elke privacy-actie wordt vastgelegd in
 | Inzage (art. 15) | **Geïmplementeerd**: categorie-overzicht van eigen gegevens (`gegevensOverzicht`, `src/server/privacy.ts:61`). |
 | Export/dataportabiliteit (art. 15/20) | **Geïmplementeerd**: JSON-download met uitsluitend eigen gegevens — nooit gegevens van derden (`exporteerEigenGegevens`, `src/server/privacy.ts:124`). Organisaties hebben daarnaast CSV-export via `ExportJob` (`src/server/integrations.ts:318`). |
 | Verwijdering (art. 17) | **Geïmplementeerd als directe anonimisering** in één transactie (`verwijderAccount`, `src/server/privacy.ts:278`): naam/e-mail geanonimiseerd, wachtwoordhash onbruikbaar geroteerd, kandidaatprofiel hard verwijderd, consents en memberships ingetrokken, notificaties en outbox-mail gewist, sessie uitgelogd. **Bewuste afweging**: `MatchSnapshot`, `PipelineStatusChange`, `MatchDecisionFeedback` en `AuditLog` blijven bestaan als geanonimiseerde bedrijfsadministratie (geschillen, misbruikdetectie, KPI-integriteit) — na anonimisering verwijzen ze alleen naar een user-id zonder naam/e-mail/profiel. Kanttekening: `MatchSnapshot.profileData` behoudt profielgegevens van het matchmoment (geen naam/e-mail, wel bv. postcode/beschikbaarheid); een striktere scrub-stap is een benoemde vervolgkeuze (`docs/OPERATIONS.md` §3). |
-| Intrekken toestemming (art. 7) | Servicelaag klaar (`revokeConsent`); kandidaat-UI op moment van schrijven niet gevonden in `app/**` (zie consentmodel hierboven). |
+| Intrekken toestemming (art. 7) | **Geïmplementeerd**: kandidaat-UI op `/instellingen/privacy`, sectie "Gedeelde gegevens" — actieve consents inzien en per rij intrekken met bevestigingsstap (server action → `revokeConsent`, `src/server/pipeline.ts`, audit + analytics in de servicelaag). |
 | Verwerkingsregister / DPA's | Niet in de codebase; procespunt buiten scope van deze repo. |
 
 ## Bewaartermijnen

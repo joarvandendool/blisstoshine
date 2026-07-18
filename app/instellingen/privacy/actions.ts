@@ -9,7 +9,29 @@
 import { redirect } from "next/navigation";
 import { AuthzError, requireUser } from "@/lib/authz";
 import { clearSessionCookie } from "@/lib/auth";
+import { revokeConsent } from "@/server/pipeline";
 import { verwijderAccount } from "@/server/privacy";
+
+/**
+ * Trekt één eerder verleende toestemming in (AVG art. 7 lid 3). De pagina
+ * toont eerst een expliciete bevestigingsstap; autorisatie (ingelogde
+ * kandidaat), audit- en analyticsregel gebeuren in de servicelaag
+ * (revokeConsent, src/server/pipeline.ts).
+ */
+export async function trekConsentInAction(formData: FormData): Promise<void> {
+  const organizationId = formData.get("organizationId")?.toString().trim();
+  const vacancyId = formData.get("vacancyId")?.toString().trim();
+  if (!organizationId) redirect("/instellingen/privacy");
+
+  try {
+    await revokeConsent(organizationId, vacancyId || undefined);
+  } catch (fout) {
+    if (fout instanceof AuthzError) redirect("/inloggen");
+    throw fout;
+  }
+
+  redirect("/instellingen/privacy?ingetrokken=1");
+}
 
 export async function verwijderAccountAction(formData: FormData): Promise<void> {
   let user: Awaited<ReturnType<typeof requireUser>>;

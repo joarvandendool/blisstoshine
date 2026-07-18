@@ -360,6 +360,65 @@ export async function revokeConsent(
   });
 }
 
+/** Actieve consent van een kandidaat, verrijkt voor weergave. */
+export interface ActiveConsentEntry {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  vacancyId: string | null;
+  /** null bij een organisatiebrede consent of een inmiddels verwijderde vacature. */
+  vacancyTitle: string | null;
+  grantedAt: Date;
+}
+
+/**
+ * Alle actieve (niet-ingetrokken) consents van één kandidaat, nieuwste eerst,
+ * verrijkt met organisatienaam en eventuele vacaturetitel — voor de
+ * zelfbedieningspagina /instellingen/privacy ("Gedeelde gegevens").
+ */
+export async function listActiveConsents(
+  candidateUserId: string,
+): Promise<ActiveConsentEntry[]> {
+  const consents = await prisma.candidateConsent.findMany({
+    where: { candidateUserId, scope: CONSENT_SCOPE, revokedAt: null },
+    orderBy: { grantedAt: "desc" },
+  });
+  if (consents.length === 0) return [];
+
+  const organisatieIds = [...new Set(consents.map((c) => c.organizationId))];
+  const vacatureIds = [
+    ...new Set(
+      consents.flatMap((c) => (c.vacancyId !== null ? [c.vacancyId] : [])),
+    ),
+  ];
+  const [organisaties, vacatures] = await Promise.all([
+    prisma.organization.findMany({
+      where: { id: { in: organisatieIds } },
+      select: { id: true, name: true },
+    }),
+    vacatureIds.length > 0
+      ? prisma.vacancy.findMany({
+          where: { id: { in: vacatureIds } },
+          select: { id: true, title: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const orgNaam = new Map(organisaties.map((o) => [o.id, o.name]));
+  const vacatureTitel = new Map(vacatures.map((v) => [v.id, v.title]));
+
+  return consents.map((consent) => ({
+    id: consent.id,
+    organizationId: consent.organizationId,
+    organizationName: orgNaam.get(consent.organizationId) ?? "Praktijk",
+    vacancyId: consent.vacancyId,
+    vacancyTitle:
+      consent.vacancyId !== null
+        ? (vacatureTitel.get(consent.vacancyId) ?? null)
+        : null,
+    grantedAt: consent.grantedAt,
+  }));
+}
+
 /**
  * Is er een actieve consent van deze kandidaat richting deze organisatie?
  * Een organisatiebrede consent (vacancyId null) dekt alle vacatures; een

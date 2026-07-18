@@ -1,22 +1,29 @@
 // Privacy & gegevens (/instellingen/privacy) — AVG-rechten voor de ingelogde
 // gebruiker: inzage (overzicht per categorie), export (JSON-download),
-// correctie (verwijzing naar de profielpagina's), toestemmingen (verwijzing
-// naar de uitnodigingenpagina) en verwijdering (twee-staps bevestiging met
-// directe anonimisering; zie src/server/privacy.ts voor de afwegingen).
+// correctie (verwijzing naar de profielpagina's), toestemmingen (sectie
+// "Gedeelde gegevens": actieve consents inzien en per rij intrekken, art. 7)
+// en verwijdering (twee-staps bevestiging met directe anonimisering; zie
+// src/server/privacy.ts voor de afwegingen).
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AuthzError, firstOrganizationOf, requireUser } from "@/lib/authz";
 import { prisma } from "@/lib/db";
+import { listActiveConsents } from "@/server/pipeline";
 import { gegevensOverzicht } from "@/server/privacy";
 import { AppShell, type AppShellNavItem } from "@/components/AppShell";
 import { Button, Card, Input, PageHeader } from "@/components/ui";
-import { verwijderAccountAction } from "./actions";
+import { trekConsentInAction, verwijderAccountAction } from "./actions";
 
 export default async function PrivacyPagina({
   searchParams,
 }: {
-  searchParams: Promise<{ verwijderen?: string; fout?: string }>;
+  searchParams: Promise<{
+    verwijderen?: string;
+    fout?: string;
+    intrekken?: string;
+    ingetrokken?: string;
+  }>;
 }) {
   let user: Awaited<ReturnType<typeof requireUser>>;
   try {
@@ -25,16 +32,17 @@ export default async function PrivacyPagina({
     if (fout instanceof AuthzError) redirect("/inloggen");
     throw fout;
   }
-  const { verwijderen, fout } = await searchParams;
+  const { verwijderen, fout, intrekken, ingetrokken } = await searchParams;
   const toonBevestiging = verwijderen === "1";
 
-  const [profiel, lidmaatschap, categorieen] = await Promise.all([
+  const [profiel, lidmaatschap, categorieen, consents] = await Promise.all([
     prisma.candidateProfile.findUnique({
       where: { userId: user.id },
       select: { status: true },
     }),
     firstOrganizationOf(user.id),
     gegevensOverzicht(user.id),
+    listActiveConsents(user.id),
   ]);
 
   const isKandidaat = profiel !== null;
@@ -114,6 +122,110 @@ export default async function PrivacyPagina({
           </div>
         </Card>
 
+        {/* Gedeelde gegevens — actieve toestemmingen inzien en intrekken */}
+        <Card>
+          <h2 className="text-lg font-semibold text-ink">Gedeelde gegevens</h2>
+          <p className="mt-2 text-sm text-ink/70">
+            Praktijken waarmee je je naam en contactgegevens deelt. Intrekken
+            kan altijd; de praktijk ziet daarna weer alleen je geanonimiseerde
+            profiel.
+          </p>
+          {ingetrokken === "1" ? (
+            <p role="status" className="mt-3 rounded-lg bg-blauw-50 px-4 py-2 text-sm font-semibold text-blauw-900">
+              De toestemming is ingetrokken.
+            </p>
+          ) : null}
+          {!isKandidaat ? (
+            <p className="mt-4 text-sm text-ink/60">
+              Je hebt geen kandidaatprofiel, dus er zijn geen gedeelde
+              kandidaatgegevens.
+            </p>
+          ) : consents.length === 0 ? (
+            <p className="mt-4 text-sm text-ink/60">
+              Je deelt je gegevens op dit moment met geen enkele praktijk.
+              Toestemming geef je per uitnodiging op{" "}
+              <Link href="/kandidaat/uitnodigingen" className="font-semibold text-blauw-900 underline">
+                de uitnodigingenpagina
+              </Link>
+              .
+            </p>
+          ) : (
+            <ul className="mt-4 flex flex-col divide-y divide-ink/5">
+              {consents.map((consent) => {
+                const bevestigIntrekken = intrekken === consent.id;
+                const datum = consent.grantedAt.toLocaleDateString("nl-NL", {
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                });
+                return (
+                  <li key={consent.id} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-ink">
+                          {consent.organizationName}
+                          {consent.vacancyTitle ? (
+                            <span className="font-normal text-ink/70">
+                              {" "}
+                              — {consent.vacancyTitle}
+                            </span>
+                          ) : (
+                            <span className="font-normal text-ink/70">
+                              {" "}
+                              — hele praktijk
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-ink/60">
+                          Gedeeld sinds {datum}
+                        </p>
+                      </div>
+                      {!bevestigIntrekken ? (
+                        <Link
+                          href={`/instellingen/privacy?intrekken=${consent.id}`}
+                          scroll={false}
+                        >
+                          <Button type="button" variant="secondary">
+                            Intrekken
+                          </Button>
+                        </Link>
+                      ) : null}
+                    </div>
+                    {bevestigIntrekken ? (
+                      <form
+                        action={trekConsentInAction}
+                        className="flex flex-wrap items-center gap-3 rounded-lg bg-roze-500/10 px-4 py-3"
+                      >
+                        <input type="hidden" name="organizationId" value={consent.organizationId} />
+                        {consent.vacancyId ? (
+                          <input type="hidden" name="vacancyId" value={consent.vacancyId} />
+                        ) : null}
+                        <p className="text-sm text-ink">
+                          Toestemming voor{" "}
+                          <span className="font-semibold">{consent.organizationName}</span>{" "}
+                          intrekken?
+                        </p>
+                        <div className="flex items-center gap-3">
+                          <Button type="submit" variant="danger">
+                            Ja, intrekken
+                          </Button>
+                          <Link
+                            href="/instellingen/privacy"
+                            scroll={false}
+                            className="text-sm font-semibold text-ink/70 underline"
+                          >
+                            Annuleren
+                          </Link>
+                        </div>
+                      </form>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Card>
+
         {/* Correctie + toestemmingen */}
         <Card>
           <h2 className="text-lg font-semibold text-ink">Corrigeren en toestemmingen</h2>
@@ -140,11 +252,11 @@ export default async function PrivacyPagina({
             {isKandidaat ? (
               <li>
                 Toestemming om je naam en contactgegevens met een praktijk te
-                delen geef je per uitnodiging en kun je{" "}
+                delen geef je per uitnodiging op{" "}
                 <Link href="/kandidaat/uitnodigingen" className="font-semibold text-blauw-900 underline">
-                  op de uitnodigingenpagina
-                </Link>{" "}
-                beheren en intrekken.
+                  de uitnodigingenpagina
+                </Link>
+                ; intrekken doe je hierboven bij “Gedeelde gegevens”.
               </li>
             ) : null}
             <li>
