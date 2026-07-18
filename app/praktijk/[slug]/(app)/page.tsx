@@ -204,7 +204,7 @@ export default async function PraktijkDashboard({
         </div>
         <Link
           href={`${basis}/abonnement`}
-          className="text-sm font-semibold text-blauw-700 underline-offset-4 hover:underline"
+          className="-my-3 inline-flex min-h-11 items-center text-sm font-semibold text-blauw-700 underline-offset-4 hover:underline"
         >
           Abonnement beheren
         </Link>
@@ -376,7 +376,7 @@ function VacatureKaart({
             </div>
             <Link
               href={`${basis}/pipeline`}
-              className="text-sm font-semibold text-blauw-700 underline-offset-4 hover:underline"
+              className="-my-3 inline-flex min-h-11 items-center text-sm font-semibold text-blauw-700 underline-offset-4 hover:underline"
             >
               Beheer in de pipeline →
             </Link>

@@ -62,7 +62,6 @@ export default async function InternLayout({
   return (
     <AppShell
       nav={INTERN_NAV}
-      activePath="/intern"
       userName={beheerder.name}
       areaLabel="Intern"
     >

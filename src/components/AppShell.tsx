@@ -1,6 +1,7 @@
 // AppShell — productshell voor de ingelogde omgevingen (kandidaat, praktijk,
-// intern). Server component: geen client hooks; het actieve nav-item wordt
-// bepaald uit de meegegeven activePath.
+// intern). Server component voor de statische delen; de navigatie zelf is een
+// client component (AppShellNav) die het actieve item uit de echte pathname
+// afleidt, ook op onderliggende pagina's.
 //
 // Desktop: glass-bovenbalk met wordmark, areanavigatie en gebruikersmenu.
 // Mobiel: navigatie als bottom tabs met grote tap-targets.
@@ -10,31 +11,27 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { cx } from "@/components/ui";
 import { NotificationBell } from "@/components/NotificationBell";
+import {
+  AppShellDesktopNav,
+  AppShellMobileTabs,
+  type AppShellNavItem,
+} from "@/components/AppShellNav";
 
-export interface AppShellNavItem {
-  href: string;
-  label: string;
-}
+export type { AppShellNavItem };
 
 export interface AppShellProps {
   children: ReactNode;
   nav: AppShellNavItem[];
-  /** Huidige pathname; bepaalt het actieve nav-item. */
-  activePath: string;
   userName: string;
   /** Label van de omgeving, bv. "Praktijk" of "Kandidaat". */
   areaLabel?: string;
-}
-
-function isActief(activePath: string, href: string): boolean {
-  return activePath === href || activePath.startsWith(`${href}/`);
 }
 
 function Wordmark() {
   return (
     <Link
       href="/"
-      className="text-xl font-semibold tracking-tight text-ink"
+      className="inline-flex min-h-11 items-center text-xl font-semibold tracking-tight text-ink"
       aria-label="mondzorgwerkt — naar de homepage"
     >
       mondzorg
@@ -43,13 +40,7 @@ function Wordmark() {
   );
 }
 
-export function AppShell({
-  children,
-  nav,
-  activePath,
-  userName,
-  areaLabel,
-}: AppShellProps) {
+export function AppShell({ children, nav, userName, areaLabel }: AppShellProps) {
   return (
     <div className="relative flex min-h-dvh flex-col overflow-x-clip bg-surface text-ink">
       {/* dromerige achtergrond-orbs, puur decoratief */}
@@ -72,30 +63,7 @@ export function AppShell({
           </div>
 
           {/* areanavigatie — desktop */}
-          <nav aria-label="Hoofdnavigatie" className="hidden md:block">
-            <ul className="flex items-center gap-1">
-              {nav.map((item) => {
-                const actief = isActief(activePath, item.href);
-                return (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      aria-current={actief ? "page" : undefined}
-                      className={cx(
-                        "inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold",
-                        "transition-colors duration-150 motion-reduce:transition-none",
-                        actief
-                          ? "bg-blauw-600 text-white shadow-(--shadow-knop-blauw)"
-                          : "text-ink/80 hover:bg-ink/5 hover:text-ink",
-                      )}
-                    >
-                      {item.label}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </nav>
+          <AppShellDesktopNav items={nav} />
 
           {/* meldingen + gebruiker + uitloggen */}
           <div className="flex items-center gap-3">
@@ -125,42 +93,7 @@ export function AppShell({
       </main>
 
       {/* areanavigatie — mobiel als bottom tabs */}
-      <nav
-        aria-label="Hoofdnavigatie (mobiel)"
-        className="fixed inset-x-0 bottom-0 z-40 glass-strong rounded-none border-x-0 border-b-0 border-t border-t-ink/5 pb-[env(safe-area-inset-bottom)] md:hidden"
-      >
-        <ul
-          className="grid"
-          style={{ gridTemplateColumns: `repeat(${Math.max(nav.length, 1)}, minmax(0, 1fr))` }}
-        >
-          {nav.map((item) => {
-            const actief = isActief(activePath, item.href);
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  aria-current={actief ? "page" : undefined}
-                  className={cx(
-                    "flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 py-2 text-xs font-semibold",
-                    "transition-colors duration-150 motion-reduce:transition-none",
-                    actief ? "text-blauw-700" : "text-ink/70",
-                  )}
-                >
-                  {/* actieve staat: kleur ÉN indicatorbalkje, nooit alleen kleur */}
-                  <span
-                    aria-hidden="true"
-                    className={cx(
-                      "h-1 w-8 rounded-full",
-                      actief ? "bg-blauw-600" : "bg-transparent",
-                    )}
-                  />
-                  <span className="truncate">{item.label}</span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
+      <AppShellMobileTabs items={nav} />
     </div>
   );
 }

@@ -1,7 +1,8 @@
 // End-to-end-test van de kritieke gebruikersflow van Mondzorgwerkt:
 //
 //  1. kandidaat registreert en doorloopt de volledige onboarding;
-//  2. praktijk registreert en maakt organisatie + locatie (Utrecht);
+//  2. praktijk registreert en maakt organisatie + locatie (Utrecht) via
+//     stap 1 van de commerciële onboarding op /praktijk/start;
 //  3. praktijk publiceert een vacature via de wizard;
 //  4. kandidaat ziet de match in de feed en opent het matchdetail (uitleg);
 //  5. (= stap 7 uit de opdracht) de Match Studio toont op trial de beperkte
@@ -12,7 +13,8 @@
 //  7. praktijk simuleert in de volledige studio een roosterwijziging en de
 //     kandidatenpool verandert (wacht op de simulate-API-response);
 //  8. kandidaat solliciteert met motivatie;
-//  9. praktijk zet de sollicitatie naar gesprek en daarna naar aangenomen;
+//  9. praktijk stelt via de pipelinepagina een gesprek voor, de kandidaat
+//     bevestigt een moment en de praktijk neemt aan;
 // 10. de bijbehorende AnalyticsEvent-rijen bestaan (verificatie via Prisma).
 //
 // De twee actoren (kandidaat en praktijk) hebben elk hun eigen browsercontext
@@ -219,20 +221,32 @@ test.describe.serial("Kritieke gebruikersflow", () => {
     await praktijk.getByLabel("E-mailadres").fill(PRAKTIJK_EMAIL);
     await praktijk.getByLabel("Wachtwoord").fill(WACHTWOORD);
     await klik(praktijk.getByRole("button", { name: "Start als praktijk" }));
-    await praktijk.waitForURL("**/praktijk/nieuw");
 
+    // Registratie leidt naar de commerciële onboarding op /praktijk/start.
+    // Stap 1 (praktijkgegevens) maakt organisatie + locatie + trial aan; de
+    // rest van de flow is optioneel — deze test bouwt de vacature bewust via
+    // de wizard (stap 3), dus we verlaten de onboarding na stap 1.
+    await praktijk.waitForURL("**/praktijk/start");
+    await expect(
+      praktijk.getByRole("heading", { name: /stel je praktijk voor/ }),
+    ).toBeVisible();
     await praktijk.locator("#praktijknaam").fill(PRAKTIJK_NAAM);
-    await praktijk.locator("#postcode").fill("3511 AB");
     await praktijk.locator("#plaats").fill("Utrecht");
-    await klik(
-      praktijk
-        .getByRole("button", { name: "Start je praktijkomgeving" }),
-    );
+    await praktijk.locator("#postcode").fill("3511 AB");
+    await klik(praktijk.getByRole("button", { name: "Verder" }));
 
-    await praktijk.waitForURL(/\/praktijk\/(?!nieuw$)[^/]+$/);
-    praktijkSlug = new URL(praktijk.url()).pathname.split("/").pop() ?? "";
-    expect(praktijkSlug.length).toBeGreaterThan(0);
+    // Zodra stap 2 zichtbaar is, is de organisatie aangemaakt.
+    await expect(
+      praktijk.getByRole("heading", { name: "Wie zoek je?" }),
+    ).toBeVisible();
+    const organisatie = await db.organization.findFirst({
+      where: { name: PRAKTIJK_NAAM },
+      select: { slug: true },
+    });
+    expect(organisatie?.slug).toBeTruthy();
+    praktijkSlug = organisatie!.slug;
 
+    await praktijk.goto(`/praktijk/${praktijkSlug}`);
     await expect(
       praktijk.getByRole("heading", { name: `Dashboard van ${PRAKTIJK_NAAM}` }),
     ).toBeVisible();
@@ -387,24 +401,34 @@ test.describe.serial("Kritieke gebruikersflow", () => {
       praktijk.getByText("Testomgeving — geen echte betaling").first(),
     ).toBeVisible();
 
-    // Vanaf trial eerst een betaald plan starten (subscription_started) …
+    // Vanaf trial eerst een betaald plan starten (subscription_started):
+    // plan kiezen → checkout-bevestigingsstap → succesviering.
     await klik(praktijk.getByRole("button", { name: "Start Essential" }));
     await expect(
-      praktijk.getByText("Je abonnement is gewijzigd naar Essential", {
-        exact: false,
+      praktijk.getByRole("heading", {
+        name: "Bevestig je overstap naar Essential",
       }),
     ).toBeVisible();
+    await klik(praktijk.getByRole("button", { name: "Bevestig Essential" }));
+    await expect(
+      praktijk.getByRole("heading", { name: "Welkom bij Essential" }),
+    ).toBeVisible();
+    await klik(
+      praktijk.getByRole("button", { name: "Terug naar het planoverzicht" }),
+    );
 
     // … en daarna de echte upgrade naar Growth (subscription_upgraded).
     await klik(
       praktijk
         .getByRole("button", { name: "Upgrade naar Growth" }),
     );
+    await klik(praktijk.getByRole("button", { name: "Bevestig Growth" }));
     await expect(
-      praktijk.getByText("Je abonnement is gewijzigd naar Growth", {
-        exact: false,
-      }),
+      praktijk.getByRole("heading", { name: "Welkom bij Growth" }),
     ).toBeVisible();
+    await klik(
+      praktijk.getByRole("button", { name: "Terug naar het planoverzicht" }),
+    );
 
     const growthKaart = praktijk
       .getByRole("listitem")
@@ -494,20 +518,46 @@ test.describe.serial("Kritieke gebruikersflow", () => {
   /* ------------------ 9. praktijk: gesprek en aangenomen ------------------ */
 
   test("9. praktijk zet de sollicitatie naar gesprek en daarna naar aangenomen", async () => {
+    // Het dashboard toont de sollicitatie compact met status "Nieuw" en linkt
+    // naar de pipelinepagina waar het echte beheer gebeurt.
     await praktijk.goto(`/praktijk/${praktijkSlug}`);
-
-    // De sollicitatie staat met naam en status "Nieuw" in de pipeline.
     await expect(praktijk.getByText(KANDIDAAT_NAAM).first()).toBeVisible();
     await expect(praktijk.getByText("Nieuw", { exact: true })).toBeVisible();
+    await klik(
+      praktijk.getByRole("link", { name: "Beheer in de pipeline →" }),
+    );
+    await praktijk.waitForURL(`**/praktijk/${praktijkSlug}/pipeline`);
+    await expect(
+      praktijk.getByText("Gesolliciteerd", { exact: true }).first(),
+    ).toBeVisible();
 
-    await klik(praktijk.getByRole("button", { name: "Plan gesprek" }));
-    await expect(praktijk.getByText("Gesprek", { exact: true })).toBeVisible();
-    await expect(praktijk.getByText("1 in gesprek")).toBeVisible();
+    // Gesprek voorstellen met één moment volgende week.
+    await klik(praktijk.locator("summary", { hasText: "Gesprek voorstellen" }));
+    const overEenWeek = new Date(Date.now() + 7 * 86_400_000);
+    const slot = `${overEenWeek.toISOString().slice(0, 10)}T10:00`;
+    await praktijk.locator('input[name="slot1"]').fill(slot);
+    await klik(praktijk.getByRole("button", { name: "Voorstel versturen" }));
+    await expect(
+      praktijk.getByText(/Gesprek voorgesteld — wacht op de kandidaat/),
+    ).toBeVisible();
 
+    // De kandidaat bevestigt het voorgestelde moment (→ interview_scheduled).
+    await kandidaat.goto("/kandidaat/uitnodigingen");
+    await klik(
+      kandidaat.getByRole("button", { name: "Dit moment bevestigen" }),
+    );
+    await kandidaat.waitForURL(/\/kandidaat\/uitnodigingen\/bevestigd/);
+
+    // De praktijk ziet het bevestigde gesprek en neemt de kandidaat aan.
+    await praktijk.goto(`/praktijk/${praktijkSlug}/pipeline`);
+    await expect(praktijk.getByText(/Gesprek bevestigd:/)).toBeVisible();
     await klik(praktijk.getByRole("button", { name: "Aannemen" }));
     await expect(
-      praktijk.getByText("Aangenomen", { exact: true }),
+      praktijk.getByText("Aangenomen", { exact: true }).first(),
     ).toBeVisible();
+
+    // De compacte dashboard-samenvatting telt mee.
+    await praktijk.goto(`/praktijk/${praktijkSlug}`);
     await expect(praktijk.getByText("1 aangenomen")).toBeVisible();
   });
 

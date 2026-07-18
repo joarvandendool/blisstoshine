@@ -16,11 +16,18 @@
   }
 }
 
+/* clip i.p.v. hidden: hidden maakt de viewport tóch programmatisch scrolbaar
+   (scrollWidth groeit mee met de decoratieve orbs die buiten beeld uitsteken);
+   clip kapt de horizontale overflow echt af, zonder sticky te breken. */
+html {
+  overflow-x: clip;
+}
+
 body {
   font-family: var(--font-sans), system-ui, sans-serif;
   color: var(--inkt);
   -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 em,
@@ -68,7 +75,10 @@ em,
   gap: 32px;
 }
 
-.nav a {
+/* :not(.btn): de "Maak profiel"-knop in de nav is óók een <a>, maar moet de
+   knopkleuren houden — zonder :not won .nav a (hogere specificiteit) van
+   .btn-blauw en werd de knoptekst donker en 75% doorzichtig (te laag contrast). */
+.nav a:not(.btn) {
   text-decoration: none;
   color: var(--inkt);
   font-size: 15px;
@@ -77,7 +87,7 @@ em,
   transition: opacity 0.2s;
 }
 
-.nav a:hover {
+.nav a:not(.btn):hover {
   opacity: 1;
 }
 
@@ -386,6 +396,12 @@ em,
   font-size: 14px;
   font-weight: 600;
   text-decoration: none;
+  /* tap-target ≥ 44px zonder de kaartopmaak te laten groeien */
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 6px;
+  margin: -12px -6px;
 }
 
 /* ---------- zo werkt het ---------- */

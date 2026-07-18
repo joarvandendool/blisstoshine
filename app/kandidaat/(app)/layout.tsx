@@ -9,7 +9,7 @@ import { AppShell, type AppShellNavItem } from "@/components/AppShell";
 
 const KANDIDAAT_NAV: AppShellNavItem[] = [
   { href: "/kandidaat", label: "Matches" },
-  { href: "/kandidaat#uitnodigingen", label: "Uitnodigingen" },
+  { href: "/kandidaat/uitnodigingen", label: "Uitnodigingen" },
   { href: "/kandidaat/profiel", label: "Profiel" },
 ];
 
@@ -34,7 +34,6 @@ export default async function KandidaatAppLayout({
   return (
     <AppShell
       nav={KANDIDAAT_NAV}
-      activePath="/kandidaat"
       userName={kandidaat.user.name}
       areaLabel="Kandidaat"
     >

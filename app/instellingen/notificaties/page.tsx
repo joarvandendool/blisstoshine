@@ -109,7 +109,6 @@ export default async function NotificatieVoorkeurenPagina({
   return (
     <AppShell
       nav={nav}
-      activePath="/instellingen/notificaties"
       userName={user.name}
       areaLabel="Instellingen"
     >

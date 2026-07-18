@@ -298,7 +298,7 @@ function KandidaatKaart({
       {/* statushistorie, uitklapbaar */}
       {entry.history.length > 0 ? (
         <details className="rounded-2xl bg-white/60 px-4 py-3">
-          <summary className="cursor-pointer text-sm font-semibold text-blauw-700">
+          <summary className="-my-3 cursor-pointer py-3 text-sm font-semibold text-blauw-700">
             Statushistorie ({entry.history.length})
           </summary>
           <ol className="mt-3 flex flex-col gap-2 border-l-2 border-brand-light pl-4">
@@ -362,7 +362,7 @@ function KandidaatKaart({
 
           {kanGesprek ? (
             <details className="rounded-2xl bg-white/60 px-4 py-3">
-              <summary className="cursor-pointer text-sm font-semibold text-blauw-700">
+              <summary className="-my-3 cursor-pointer py-3 text-sm font-semibold text-blauw-700">
                 Gesprek voorstellen
               </summary>
               <form
@@ -421,7 +421,7 @@ function KandidaatKaart({
           ) : null}
 
           <details className="rounded-2xl bg-white/60 px-4 py-3">
-            <summary className="cursor-pointer text-sm font-semibold text-ink/70">
+            <summary className="-my-3 cursor-pointer py-3 text-sm font-semibold text-ink/70">
               Afwijzen
             </summary>
             <form

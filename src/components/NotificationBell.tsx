@@ -154,7 +154,7 @@ export function NotificationBell() {
         aria-expanded={open}
         aria-haspopup="dialog"
         className={cx(
-          "relative inline-flex h-10 w-10 items-center justify-center rounded-full",
+          "relative inline-flex h-11 w-11 items-center justify-center rounded-full",
           "border border-ink/10 bg-white/70 text-ink backdrop-blur",
           "transition-colors duration-150 hover:bg-white motion-reduce:transition-none",
         )}

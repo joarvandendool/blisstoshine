@@ -39,13 +39,13 @@ export default async function PraktijkAppLayout({
     { href: `${basis}/bezetting`, label: "Bezetting" },
     { href: `${basis}/vacatures/nieuw`, label: "Vacature" },
     { href: `${basis}/radar`, label: "Radar" },
-    { href: `${basis}/abonnement`, label: "Abonnement" },
+    // Zes tabs op mobiel: "Abonnement" past daar niet onafgekapt — kort label.
+    { href: `${basis}/abonnement`, label: "Abonnement", kort: "Plan" },
   ];
 
   return (
     <AppShell
       nav={nav}
-      activePath={basis}
       userName={ctx.user.name}
       areaLabel={org.name}
     >

@@ -234,7 +234,7 @@ function RadarKaart({
             </p>
             <Link
               href={studioHref}
-              className="text-sm font-semibold text-blauw-700 underline-offset-4 hover:underline"
+              className="-my-3 inline-flex min-h-11 items-center self-start text-sm font-semibold text-blauw-700 underline-offset-4 hover:underline"
             >
               Versoepel dit in de Match Studio →
             </Link>

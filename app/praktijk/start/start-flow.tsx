@@ -562,7 +562,7 @@ export function StartFlow({
           <div className="flex items-center justify-between gap-4">
             <Link
               href="/"
-              className="text-lg font-semibold tracking-tight text-ink"
+              className="inline-flex min-h-11 items-center text-lg font-semibold tracking-tight text-ink"
               aria-label="mondzorgwerkt — naar de homepage"
             >
               mondzorg<em className="font-serif italic font-bold">werkt</em>

@@ -228,7 +228,7 @@ function UitnodigingsDetail({
           ) : null}
           <Link
             href={`/kandidaat/matches/${vacancy.id}`}
-            className="text-sm font-semibold text-blauw-700 underline-offset-4 hover:underline"
+            className="-my-3 inline-flex min-h-11 items-center text-sm font-semibold text-blauw-700 underline-offset-4 hover:underline"
           >
             Bekijk de volledige match
           </Link>
@@ -292,7 +292,7 @@ function UitnodigingsDetail({
 
           {/* afwijzen met optionele reden */}
           <details className="rounded-2xl bg-white/60 px-4 py-3">
-            <summary className="cursor-pointer text-sm font-semibold text-ink/70">
+            <summary className="-my-3 cursor-pointer py-3 text-sm font-semibold text-ink/70">
               Afwijzen
             </summary>
             <form
