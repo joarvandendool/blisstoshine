@@ -39,7 +39,9 @@ let schemaKlaar = false;
 /** Schema naar de testdatabase pushen (eenmalig) en alle tabellen legen. */
 export async function prepareTestDb(): Promise<void> {
   if (!schemaKlaar) {
-    execSync("npx prisma db push --skip-generate", {
+    // --accept-data-loss: de testdatabase is disposable; schemawijzigingen
+    // (bv. nieuwe unique constraints) mogen oude testdata altijd overschrijven.
+    execSync("npx prisma db push --skip-generate --accept-data-loss", {
       env: process.env,
       stdio: "ignore",
     });

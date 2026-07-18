@@ -93,6 +93,7 @@ enum MemberRole {
   recruiter
   hiring_manager
   viewer
+  billing_manager
 }
 
 enum MembershipStatus {
@@ -109,6 +110,8 @@ model Membership {
   organization   Organization     @relation(fields: [organizationId], references: [id])
   role           MemberRole
   status         MembershipStatus @default(active)
+  // locatiegebonden rechten: leeg = alle locaties van de organisatie
+  locationIds    String[]         @default([])
   createdAt      DateTime         @default(now())
 
   @@unique([userId, organizationId])
@@ -196,6 +199,7 @@ model Vacancy {
   location       PracticeLocation @relation(fields: [locationId], references: [id])
 
   title           String
+  slug            String?       @unique // publieke, stabiele identifier (fase 8)
   role            String
   description     String?
   experienceLevel String? // minimaal gewenst niveau
@@ -371,6 +375,10 @@ model Subscription {
   currentPeriodEnd   DateTime
   cancelAtPeriodEnd  Boolean  @default(false)
   trialEndsAt        DateTime?
+  // geplande wijziging (bv. downgrade per periode-einde) en coulance na failed payment
+  scheduledPlanVersionId String?
+  scheduledChangeAt      DateTime?
+  graceUntil             DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -581,11 +589,189 @@ model TeamMember {
   name        String
   role        String // taxonomie-functie
   schedule    Json // vaste werkdagen: { ma: { ochtend: true, … }, … }
+  contractHours Int? // contracturen per week
+  employmentType String? // loondienst | zzp | detachering
+  startDate   DateTime? // toekomstige start
+  endDate     DateTime? // verwachte uitstroom/einde
   absentFrom  DateTime?
   absentUntil DateTime?
   note        String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  absences TeamAbsence[]
+
   @@index([locationId])
+}
+
+// ---------- Workstream A: schaalfase ----------
+
+// Verzuim en verlof van teamleden, getypeerd (fase 2).
+model TeamAbsence {
+  id           String   @id @default(cuid())
+  teamMemberId String
+  teamMember   TeamMember @relation(fields: [teamMemberId], references: [id])
+  kind         String // verlof | ziekte | zwangerschapsverlof | anders
+  from         DateTime
+  until        DateTime?
+  note         String?
+  createdAt    DateTime @default(now())
+
+  @@index([teamMemberId, from])
+}
+
+// Immutable capaciteitsscenario: simulatie tot een bevoegde gebruiker bevestigt (fase 2).
+model StaffingScenario {
+  id              String   @id @default(cuid())
+  organizationId  String
+  locationId      String
+  name            String
+  kind            String // uitval | extra_kamer | nieuwe_locatie | vertrek | structurele_dag | parttime_combinatie | tijdelijk | multi_locatie
+  input           Json
+  result          Json
+  status          String   @default("simulatie") // simulatie | bevestigd | verworpen
+  createdByUserId String
+  confirmedAt     DateTime?
+  createdAt       DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+}
+
+// Account health-momentopname, uitlegbaar en geversioneerd (fase 5).
+model AccountHealthSnapshot {
+  id             String   @id @default(cuid())
+  organizationId String
+  status         String // healthy | attention | at_risk | onboarding_incomplete
+  score          Int
+  reasons        Json
+  version        String
+  calculatedAt   DateTime @default(now())
+
+  @@index([organizationId, calculatedAt])
+}
+
+// Cache voor privacyveilige marktinzichten (fase 6).
+model MarketInsightSnapshot {
+  id         String   @id @default(cuid())
+  view       String // regionaal | functie | schaarste_per_dag | flexibiliteit | trend
+  dimensionKey String // bv. "mondhygienist:utrecht"
+  period     String // bv. "2026-07"
+  data       Json
+  sampleSize Int
+  createdAt  DateTime @default(now())
+
+  @@unique([view, dimensionKey, period])
+}
+
+// Schaduwscore van matching v2 naast de actieve versie (fase 7).
+model ShadowMatchScore {
+  id              String   @id @default(cuid())
+  vacancyId       String
+  candidateUserId String
+  baseVersion     String
+  shadowVersion   String
+  baseScore       Int
+  shadowScore     Int
+  baseEligible    Boolean
+  shadowEligible  Boolean
+  diff            Json // verklaarde verschillen per categorie
+  createdAt       DateTime @default(now())
+
+  @@index([shadowVersion, createdAt])
+  @@index([vacancyId, candidateUserId])
+}
+
+// API-sleutels per organisatie (fase 9).
+model ApiKey {
+  id             String    @id @default(cuid())
+  organizationId String
+  name           String
+  prefix         String    @unique // publiek deel, bv. mzw_live_ab12
+  hashedKey      String // sha256 van de volledige sleutel
+  scopes         String[]  @default([])
+  lastUsedAt     DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId])
+}
+
+model WebhookSubscription {
+  id             String   @id @default(cuid())
+  organizationId String
+  url            String
+  secret         String // voor HMAC-signing
+  events         String[] @default([])
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  deliveries WebhookDelivery[]
+
+  @@index([organizationId])
+}
+
+model WebhookDelivery {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  subscription   WebhookSubscription @relation(fields: [subscriptionId], references: [id])
+  event          String
+  payload        Json
+  idempotencyKey String   @unique
+  status         String   @default("pending") // pending | delivered | failed | dead
+  attempts       Int      @default(0)
+  lastError      String?
+  nextAttemptAt  DateTime?
+  createdAt      DateTime @default(now())
+  deliveredAt    DateTime?
+
+  @@index([status, nextAttemptAt])
+}
+
+model ExportJob {
+  id             String    @id @default(cuid())
+  organizationId String
+  kind           String // vacatures | pipeline | bezetting | analytics
+  params         Json?
+  status         String    @default("pending") // pending | running | done | failed
+  resultPath     String?
+  requestedByUserId String
+  createdAt      DateTime  @default(now())
+  completedAt    DateTime?
+
+  @@index([organizationId, createdAt])
+}
+
+// AVG-verzoeken: inzage/export/verwijdering (fase 10).
+model PrivacyRequest {
+  id          String    @id @default(cuid())
+  userId      String
+  kind        String // export | verwijdering | correctie
+  status      String    @default("open") // open | afgerond | geweigerd
+  note        String?
+  requestedAt DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([userId, requestedAt])
+}
+
+// Vaste-venster rate limiting over serverless-instanties heen (fase 10).
+model RateLimitCounter {
+  key         String // bv. "login:1.2.3.4" of "api:mzw_live_ab12"
+  windowStart DateTime
+  count       Int      @default(1)
+
+  @@id([key, windowStart])
+}
+
+// Idempotente verwerking van inkomende provider-webhooks (fase 4).
+model InboundWebhookEvent {
+  id         String   @id @default(cuid())
+  provider   String // stripe | local_test
+  externalId String
+  type       String
+  payload    Json
+  status     String   @default("verwerkt") // verwerkt | genegeerd | fout
+  createdAt  DateTime @default(now())
+
+  @@unique([provider, externalId])
 }

@@ -57,6 +57,9 @@ const ROLE_CAPABILITIES: Record<MemberRole, ReadonlySet<string>> = {
   ]),
   hiring_manager: new Set(["vacancy.manage", "pipeline.manage", "analytics.view"]),
   viewer: new Set(["analytics.view"]),
+  // Facturatiebeheer: billing en rapportages, maar géén kandidaatdetails,
+  // vacaturebeheer of uitnodigingen (least privilege).
+  billing_manager: new Set(["billing.manage", "analytics.view"]),
 };
 
 export function roleCan(role: MemberRole, capability: string): boolean {
