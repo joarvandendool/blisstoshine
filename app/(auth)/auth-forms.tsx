@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import Link from "next/link";
 import { loginAction, registerAction, type AuthFormState } from "./actions";
 
 export function AuthCard({
@@ -17,9 +18,9 @@ export function AuthCard({
       <div aria-hidden className="orb absolute -top-32 -left-32 h-96 w-96 opacity-50" style={{ background: "radial-gradient(circle at 35% 35%, #ed6ca5, transparent 70%)", filter: "blur(70px)", borderRadius: "50%" }} />
       <div aria-hidden className="absolute -right-40 top-10 h-[28rem] w-[28rem] opacity-50" style={{ background: "radial-gradient(circle at 60% 40%, #6b8cff, #cddfee 70%)", filter: "blur(70px)", borderRadius: "50%" }} />
       <div className="relative w-full max-w-md rounded-3xl border border-white/80 bg-white/70 p-8 shadow-[0_20px_60px_rgba(1,32,236,0.08)] backdrop-blur-xl">
-        <a href="/" className="text-xl font-semibold tracking-tight text-ink">
+        <Link href="/" className="text-xl font-semibold tracking-tight text-ink">
           mondzorg<em className="font-serif italic">werkt</em>
-        </a>
+        </Link>
         <h1 className="mt-6 text-2xl font-semibold tracking-tight text-ink">{titel}</h1>
         <p className="mt-2 text-sm leading-relaxed text-ink/70">{intro}</p>
         <div className="mt-6">{children}</div>

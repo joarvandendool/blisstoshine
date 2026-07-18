@@ -1,7 +1,15 @@
 @import "tailwindcss";
 
-/* Merkbasis mondzorgwerkt — wordt uitgebreid door het designsysteem. */
+/* ============================================================
+   Mondzorgwerkt — designsysteem
+   Merkbasis: lichtblauw #cddfee, primair blauw #0120ec, roze
+   accent #ed6ca5, veel wit, transparante vloeibare glass-vormen.
+   Interface: var(--font-sans) — editorial accenten: var(--font-serif)
+   (italic serif). Zie ARCHITECTURE.md § Huisstijl.
+   ============================================================ */
+
 @theme {
+  /* ---- kernmerk (bestond al — niet verwijderen) ---- */
   --color-brand-blue: #0120ec;
   --color-brand-light: #cddfee;
   --color-brand-pink: #ed6ca5;
@@ -9,4 +17,213 @@
   --color-surface: #f4f8fc;
   --font-sans: var(--font-sans), system-ui, sans-serif;
   --font-serif: var(--font-serif), Georgia, serif;
+
+  /* ---- blauwschaal rond #0120ec ---- */
+  --color-blauw-50: #eef3ff;
+  --color-blauw-100: #dbe6ff;
+  --color-blauw-200: #bccfff;
+  --color-blauw-300: #8fabff;
+  --color-blauw-400: #5c7dff;
+  --color-blauw-500: #2e4cf7;
+  --color-blauw-600: #0120ec; /* primair merkblauw */
+  --color-blauw-700: #0119c2;
+  --color-blauw-800: #051697;
+  --color-blauw-900: #0a1670;
+
+  /* ---- roze-schaal rond #ed6ca5 ---- */
+  --color-roze-50: #fdf2f7;
+  --color-roze-100: #fbe2ee;
+  --color-roze-200: #f8c6dd;
+  --color-roze-300: #f3a1c5;
+  --color-roze-400: #ed6ca5; /* roze merkaccent */
+  --color-roze-500: #e04589;
+  --color-roze-600: #c92b70;
+  --color-roze-700: #a52d63;
+  --color-roze-800: #86254f;
+  --color-roze-900: #6f2143;
+
+  /* ---- radius: kaarten zijn royaal rond (24px+) ---- */
+  --radius-kaart: 1.5rem; /* 24px — standaardkaart */
+  --radius-kaart-lg: 1.75rem; /* 28px — hero-/featurekaarten */
+  --radius-kaart-xl: 2.25rem; /* 36px — grote secties */
+  --radius-veld: 0.875rem; /* 14px — invoervelden */
+
+  /* ---- glass-schaduwen ---- */
+  --shadow-glass: 0 14px 44px rgb(10 13 28 / 0.06);
+  --shadow-glass-strong: 0 20px 60px rgb(1 32 236 / 0.08);
+  --shadow-zweef: 0 24px 60px rgb(1 32 236 / 0.12);
+  --shadow-knop-blauw: 0 10px 30px rgb(1 32 236 / 0.25);
+  --shadow-knop-roze: 0 10px 30px rgb(237 108 165 / 0.35);
+}
+
+/* ============================================================
+   Basis — WCAG AA: lopende tekst is altijd ink op wit/surface
+   (≥ 4.5:1); knoppen brand-blauw met witte tekst.
+   ============================================================ */
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: var(--color-brand-light);
+    color: var(--color-ink);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-blue);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+}
+
+/* ============================================================
+   Herbruikbare componentklassen
+   ============================================================ */
+
+@layer components {
+  /* Frosted glass — de signatuur van elk oppervlak. */
+  .glass {
+    background-color: rgb(255 255 255 / 0.62);
+    border: 1px solid rgb(255 255 255 / 0.85);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    box-shadow: var(--shadow-glass);
+  }
+
+  .glass-strong {
+    background-color: rgb(255 255 255 / 0.84);
+    border: 1px solid rgb(255 255 255 / 0.95);
+    backdrop-filter: blur(26px);
+    -webkit-backdrop-filter: blur(26px);
+    box-shadow: var(--shadow-glass-strong);
+  }
+
+  /* Dromerige gradient-orbs op de achtergrond. Altijd decoratief:
+     plaats in een relative/overflow-hidden container met aria-hidden. */
+  .orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(70px);
+    opacity: 0.5;
+    pointer-events: none;
+  }
+
+  .orb-blauw {
+    background: radial-gradient(
+      circle at 35% 35%,
+      #6b8cff,
+      var(--color-brand-light) 70%,
+      transparent
+    );
+  }
+
+  .orb-roze {
+    background: radial-gradient(
+      circle at 40% 40%,
+      var(--color-brand-pink),
+      transparent 70%
+    );
+  }
+
+  .orb-paars {
+    background: radial-gradient(circle at 50% 50%, #b8a6ff, transparent 70%);
+    opacity: 0.4;
+  }
+
+  /* Editorial accent: italic serif voor losse woorden in koppen. */
+  .accent-serif {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* ============================================================
+   Beweging — uitsluitend wanneer de gebruiker geen voorkeur
+   voor gereduceerde beweging heeft. Zonder deze media query
+   bestaan de klassen wel maar animeren ze niet: de statische
+   compositie is altijd correct.
+   ============================================================ */
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes mz-zweef {
+    0%,
+    100% {
+      transform: translate3d(0, 0, 0);
+    }
+    50% {
+      transform: translate3d(0, -10px, 0);
+    }
+  }
+
+  @keyframes mz-puls-zacht {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.72;
+    }
+  }
+
+  /* Blob-drift voor MatchShape: heel subtiel, twee tempi zodat de
+     vormen onafhankelijk lijken te ademen. */
+  @keyframes mz-blob-a {
+    0%,
+    100% {
+      transform: translate(0px, 0px) rotate(0deg);
+    }
+    33% {
+      transform: translate(2.5px, -3px) rotate(1.4deg);
+    }
+    66% {
+      transform: translate(-2px, 2px) rotate(-1deg);
+    }
+  }
+
+  @keyframes mz-blob-b {
+    0%,
+    100% {
+      transform: translate(0px, 0px) rotate(0deg);
+    }
+    40% {
+      transform: translate(-2.5px, 2.5px) rotate(-1.2deg);
+    }
+    75% {
+      transform: translate(2px, -2px) rotate(1deg);
+    }
+  }
+
+  .animate-zweef {
+    animation: mz-zweef 7s ease-in-out infinite;
+  }
+
+  .animate-zweef-traag {
+    animation: mz-zweef 11s ease-in-out infinite;
+  }
+
+  .animate-puls-zacht {
+    animation: mz-puls-zacht 4s ease-in-out infinite;
+  }
+
+  .mz-blob-a {
+    animation: mz-blob-a 9s ease-in-out infinite;
+    will-change: transform;
+  }
+
+  .mz-blob-b {
+    animation: mz-blob-b 12s ease-in-out infinite;
+    will-change: transform;
+  }
 }
