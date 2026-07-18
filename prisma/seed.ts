@@ -8,6 +8,7 @@
 // relatief aan het draaimoment gezet.
 
 import "dotenv/config";
+import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import {
   Prisma,
@@ -424,8 +425,37 @@ async function main(): Promise<void> {
     bcrypt.hash(WACHTWOORD_KANDIDAAT, 10),
   ]);
 
-  // 2. Platform-admin.
+  // 2. Platform-admin (demo).
   await zorgGebruiker("admin@mondzorgwerkt.nl", "Platformbeheer", adminHash, true);
+
+  // 2b. Eigenaarsaccount. Wachtwoord komt uit ADMIN_PASSWORD of wordt eenmalig
+  // willekeurig gegenereerd en alleen in de console getoond — nooit in de repo.
+  // Bij een bestaand account wordt het wachtwoord NIET overschreven.
+  const eigenaarEmail = "info@joarvandendool.com";
+  const bestaandeEigenaar = await prisma.user.findUnique({
+    where: { email: eigenaarEmail },
+  });
+  let eigenaarWachtwoordMelding = "(bestaand wachtwoord ongewijzigd)";
+  if (bestaandeEigenaar) {
+    await prisma.user.update({
+      where: { email: eigenaarEmail },
+      data: { isPlatformAdmin: true },
+    });
+  } else {
+    const eigenaarWachtwoord =
+      process.env.ADMIN_PASSWORD ?? `mzw-${randomBytes(9).toString("base64url")}`;
+    await prisma.user.create({
+      data: {
+        email: eigenaarEmail,
+        name: "Joar van den Dool",
+        passwordHash: await bcrypt.hash(eigenaarWachtwoord, 10),
+        isPlatformAdmin: true,
+      },
+    });
+    eigenaarWachtwoordMelding = process.env.ADMIN_PASSWORD
+      ? "(wachtwoord uit ADMIN_PASSWORD)"
+      : `wachtwoord: ${eigenaarWachtwoord}  ← bewaar dit, wordt niet opnieuw getoond`;
+  }
 
   // 3. Praktijk 1: Mondzorgpraktijk De Lindeboom (Utrecht, growth).
   const lindeboomOwner = await zorgGebruiker(
@@ -1176,6 +1206,7 @@ async function main(): Promise<void> {
   console.log("");
   console.log("  Platform-admin");
   console.log(`    admin@mondzorgwerkt.nl / ${WACHTWOORD_ADMIN}`);
+  console.log(`    ${eigenaarEmail} ${eigenaarWachtwoordMelding}`);
   console.log("");
   console.log("  Praktijk 1 — Mondzorgpraktijk De Lindeboom (Utrecht, growth)");
   console.log(`    praktijk@delindeboom.nl / ${WACHTWOORD_PRAKTIJK}  (owner)`);
