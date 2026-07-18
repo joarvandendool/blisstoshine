@@ -2,8 +2,10 @@
 // organisatie uit het geverifieerde membership (OrgContext) — een vacature van
 // organisatie B is voor organisatie A onvindbaar (404), nooit alleen verboden.
 
-import type { PracticeLocation, Prisma, Vacancy, VacancyStatus } from "@prisma/client";
+import { createHash } from "node:crypto";
+import { Prisma, type PracticeLocation, type Vacancy, type VacancyStatus } from "@prisma/client";
 import { AuthzError, roleCan, type OrgContext } from "@/lib/authz";
+import { dispatchEvent } from "@/lib/webhooks";
 import { track } from "@/lib/analytics";
 import { audit } from "@/lib/audit";
 import { enforceLimit } from "@/lib/billing";
@@ -72,6 +74,88 @@ function vereis(ctx: OrgContext, capability: string): void {
   if (!roleCan(ctx.role, capability)) {
     throw new AuthzError(`Rol ${ctx.role} mag dit niet: ${capability}`, 403);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Publieke slug (fase 8)
+// ---------------------------------------------------------------------------
+//
+// Elke gepubliceerde vacature krijgt een stabiele publieke slug van
+// titel + stad + korte hash van het vacature-ID, bv.
+// "mondhygienist-3-dagen-utrecht-a1b2c3". De slug wordt toegekend bij de
+// eerste publicatie (of lazily voor al gepubliceerde vacatures zonder slug)
+// en verandert daarna NOOIT meer — ook niet bij een titelwijziging. Codex
+// bouwt hier /vacatures/[slug] op; de hash maakt de slug uniek zonder
+// volgnummers.
+
+/** Tekst → url-veilig slugdeel: kleine letters, geen diakrieten, koppeltekens. */
+function slugDeel(tekst: string): string {
+  return tekst
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "") // diakrieten weg (é → e)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60)
+    .replace(/-+$/g, "");
+}
+
+/** Korte, deterministische hash van het vacature-ID (uniekmaker in de slug). */
+function slugHash(vacancyId: string, lengte = 6): string {
+  return createHash("sha1").update(vacancyId).digest("hex").slice(0, lengte);
+}
+
+/** Pure slugopbouw: titel + stad + korte hash. Exported voor tests. */
+export function buildVacancySlug(titel: string, stad: string, vacancyId: string, hashLengte = 6): string {
+  const delen = [slugDeel(titel), slugDeel(stad)].filter(Boolean).join("-");
+  return `${delen || "vacature"}-${slugHash(vacancyId, hashLengte)}`;
+}
+
+/**
+ * Zorgt dat de vacature een slug heeft en geeft die terug. Bestaat er al
+ * één, dan is die het antwoord (slugs wijzigen nooit). Toekenning is
+ * race-veilig (updateMany op slug=null) en bij een — theoretische —
+ * hash-botsing wordt één keer opnieuw geprobeerd met een langere hash.
+ * Wordt gebruikt bij publicatie én lazily voor bestaande gepubliceerde
+ * vacatures zonder slug (via de publieke read models).
+ */
+export async function ensureVacancySlug(
+  vacancy: Pick<Vacancy, "id" | "slug" | "title" | "locationId">,
+  city?: string,
+): Promise<string> {
+  if (vacancy.slug) return vacancy.slug;
+
+  let stad = city;
+  if (stad === undefined) {
+    const locatie = await prisma.practiceLocation.findUnique({
+      where: { id: vacancy.locationId },
+      select: { city: true },
+    });
+    stad = locatie?.city ?? "";
+  }
+
+  for (const hashLengte of [6, 12]) {
+    const kandidaat = buildVacancySlug(vacancy.title, stad, vacancy.id, hashLengte);
+    try {
+      // Alleen zetten wanneer nog geen slug is toegekend (race-veilig).
+      await prisma.vacancy.updateMany({
+        where: { id: vacancy.id, slug: null },
+        data: { slug: kandidaat },
+      });
+      break;
+    } catch (fout) {
+      const botsing =
+        fout instanceof Prisma.PrismaClientKnownRequestError && fout.code === "P2002";
+      if (!botsing || hashLengte === 12) throw fout;
+    }
+  }
+
+  const vers = await prisma.vacancy.findUniqueOrThrow({
+    where: { id: vacancy.id },
+    select: { slug: true },
+  });
+  if (!vers.slug) throw new Error(`Slug toekennen mislukt voor vacature ${vacancy.id}`);
+  return vers.slug;
 }
 
 // ---------------------------------------------------------------------------
@@ -205,6 +289,9 @@ export async function publishVacancy(ctx: OrgContext, id: string): Promise<Vacan
   });
   await enforceLimit(ctx.organizationId, "max_active_vacancies", aantalGepubliceerd);
 
+  // Stabiele publieke slug: toegekend bij eerste publicatie, wijzigt nooit meer.
+  const slug = await ensureVacancySlug(vacature, vacature.location.city);
+
   const gepubliceerd = await prisma.vacancy.update({
     where: { id: vacature.id },
     data: { status: "published", publishedAt: new Date() },
@@ -222,6 +309,17 @@ export async function publishVacancy(ctx: OrgContext, id: string): Promise<Vacan
     organizationId: ctx.organizationId,
     userId: ctx.user.id,
     meta: { title: vacature.title },
+  });
+
+  // Webhook-event voor integraties (fase 9). dispatchEvent faalt zacht:
+  // een kapotte webhook mag publiceren nooit blokkeren.
+  await dispatchEvent(ctx.organizationId, "vacancy.published", {
+    vacancyId: gepubliceerd.id,
+    slug,
+    title: gepubliceerd.title,
+    role: gepubliceerd.role,
+    city: gepubliceerd.location.city,
+    publishedAt: gepubliceerd.publishedAt?.toISOString() ?? null,
   });
 
   return gepubliceerd;

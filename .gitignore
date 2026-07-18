@@ -9,3 +9,6 @@ out/
 .env
 !.env.example
 tsconfig.tsbuildinfo
+
+# CSV-exports van de integratiepagina (tijdelijke bestanden, fase 9)
+.exports/

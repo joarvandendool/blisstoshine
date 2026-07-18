@@ -30,7 +30,7 @@ JSON-LD-presentatie, visuele regressietests.
 
 | Bestand | Wijziging | Reden | Integratie-impact |
 |---------|-----------|-------|-------------------|
-| _(nog geen)_ | | | |
+| `.gitignore` | `.exports/` toegevoegd | CSV-exportjobs (fase 9) schrijven tijdelijke bestanden naar `.exports/<orgId>/<jobId>.csv` | Geen — alleen ignore-regel; geen code geraakt |
 
 ## Publieke API-contracten voor Codex
 
