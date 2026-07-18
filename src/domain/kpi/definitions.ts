@@ -634,3 +634,433 @@ export function revenueConcentration(snapshots: MrrSnapshot[]): KpiValue {
   if (totaal <= 0) return onvoldoendeData(DEF_REVENUE_CONCENTRATION);
   return kpi(grootste / totaal, DEF_REVENUE_CONCENTRATION);
 }
+
+// =====================================================================
+// Activatie-KPI's (commerciële funnel — praktijkkant)
+// =====================================================================
+
+/** Eén praktijkaccount voor de activatie-KPI's. */
+export interface ActivationOrganizationRow {
+  orgId: string;
+  /** Moment van accountaanmaak (registratie). */
+  createdAt: Date;
+  /** Moment van praktijkactivatie (practice_activated); null = nog niet. */
+  activatedAt: Date | null;
+  /** Heeft dit account de commerciële onboarding afgerond? */
+  onboardingCompleted: boolean;
+}
+
+const DEF_NEW_PRACTICE_ACCOUNTS =
+  "Aantal nieuwe praktijkaccounts (organisaties) aangemaakt in de afgelopen 30 dagen.";
+
+/** Nieuwe praktijkaccounts binnen de periode (standaard 30 dagen tot `now`). */
+export function newPracticeAccounts(
+  rows: Array<Pick<ActivationOrganizationRow, "createdAt">>,
+  now: Date,
+  periodDays = 30,
+): KpiValue {
+  const vanaf = now.getTime() - periodDays * MS_PER_DAG;
+  const aantal = rows.filter(
+    (r) => r.createdAt.getTime() >= vanaf && r.createdAt.getTime() <= now.getTime(),
+  ).length;
+  return kpi(aantal, DEF_NEW_PRACTICE_ACCOUNTS);
+}
+
+const DEF_ONBOARDING_COMPLETION =
+  "Aandeel praktijkaccounts dat de onboarding heeft afgerond; minimaal 3 accounts.";
+
+export function onboardingCompletionRate(
+  rows: Array<Pick<ActivationOrganizationRow, "onboardingCompleted">>,
+  minimumAccounts = 3,
+): KpiValue {
+  if (rows.length < minimumAccounts) {
+    return onvoldoendeData(DEF_ONBOARDING_COMPLETION);
+  }
+  const afgerond = rows.filter((r) => r.onboardingCompleted).length;
+  return kpi(afgerond / rows.length, DEF_ONBOARDING_COMPLETION);
+}
+
+const DEF_TIME_TO_ACTIVATION =
+  "Mediane tijd in dagen van accountaanmaak tot praktijkactivatie; minimaal 3 geactiveerde praktijken.";
+
+/** Mediane doorlooptijd registratie → activatie over geactiveerde praktijken. */
+export function timeToActivationMedian(
+  rows: Array<Pick<ActivationOrganizationRow, "createdAt" | "activatedAt">>,
+  minimumActivated = 3,
+): KpiValue {
+  const metingen: DurationMeasurement[] = [];
+  for (const rij of rows) {
+    if (
+      rij.activatedAt !== null &&
+      rij.activatedAt.getTime() >= rij.createdAt.getTime()
+    ) {
+      metingen.push({ startAt: rij.createdAt, endAt: rij.activatedAt });
+    }
+  }
+  return mediaanInDagen(metingen, DEF_TIME_TO_ACTIVATION, minimumActivated);
+}
+
+/** Activatiemijlpaal per praktijk: gehaald of niet. */
+export interface PracticeMilestoneRow {
+  orgId: string;
+  achieved: boolean;
+}
+
+function mijlpaalAandeel(
+  rows: PracticeMilestoneRow[],
+  definition: string,
+  minimumPractices: number,
+): KpiValue {
+  if (rows.length < minimumPractices) return onvoldoendeData(definition);
+  const gehaald = rows.filter((r) => r.achieved).length;
+  return kpi(gehaald / rows.length, definition);
+}
+
+const DEF_RADAR_VIEWED_SHARE =
+  "Aandeel praktijken dat minstens één keer de Talent Radar heeft bekeken; minimaal 3 praktijken.";
+
+export function radarViewedShare(
+  rows: PracticeMilestoneRow[],
+  minimumPractices = 3,
+): KpiValue {
+  return mijlpaalAandeel(rows, DEF_RADAR_VIEWED_SHARE, minimumPractices);
+}
+
+const DEF_FIRST_STRONG_MATCH_SHARE =
+  "Aandeel praktijken met minstens één sterke match (goede of uitstekende match) op een gepubliceerde vacature; minimaal 3 praktijken.";
+
+export function firstStrongMatchShare(
+  rows: PracticeMilestoneRow[],
+  minimumPractices = 3,
+): KpiValue {
+  return mijlpaalAandeel(rows, DEF_FIRST_STRONG_MATCH_SHARE, minimumPractices);
+}
+
+const DEF_FIRST_INVITATION_SHARE =
+  "Aandeel praktijken dat minstens één kandidaat heeft uitgenodigd; minimaal 3 praktijken.";
+
+export function firstInvitationShare(
+  rows: PracticeMilestoneRow[],
+  minimumPractices = 3,
+): KpiValue {
+  return mijlpaalAandeel(rows, DEF_FIRST_INVITATION_SHARE, minimumPractices);
+}
+
+// =====================================================================
+// Conversie-KPI's (trial → betaald, checkout)
+// =====================================================================
+
+/** Eén organisatie in de trial-naar-betaald-funnel. */
+export interface TrialConversionRow {
+  orgId: string;
+  /** Moment van registratie (accountaanmaak). */
+  registeredAt: Date;
+  /** Moment van het eerste betaalde abonnement; null = (nog) niet betaald. */
+  convertedAt: Date | null;
+  /** Plancode van de conversie (bv. "growth"); null zonder conversie. */
+  plan: string | null;
+  /** Acquisitiebron van de organisatie; null = onbekend. */
+  acquisitionSource: string | null;
+}
+
+const DEF_TRIAL_STARTS = "Aantal organisaties dat een proefperiode is gestart.";
+
+export function trialStarts(rows: TrialConversionRow[]): KpiValue {
+  return kpi(rows.length, DEF_TRIAL_STARTS);
+}
+
+const DEF_TRIAL_TO_PAID =
+  "Aandeel gestarte proefperiodes dat is omgezet naar een betaald abonnement; minimaal 5 proefperiodes.";
+
+export function trialToPaidRate(
+  rows: TrialConversionRow[],
+  minimumTrials = 5,
+): KpiValue {
+  if (rows.length < minimumTrials) return onvoldoendeData(DEF_TRIAL_TO_PAID);
+  const betaald = rows.filter((r) => r.convertedAt !== null).length;
+  return kpi(betaald / rows.length, DEF_TRIAL_TO_PAID);
+}
+
+const DEF_TIME_TO_PAID =
+  "Mediane tijd in dagen van registratie tot de eerste betaling (abonnementsstart); minimaal 3 conversies.";
+
+/** Mediane doorlooptijd registratie → eerste betaald abonnement. */
+export function timeToPaidMedian(
+  rows: TrialConversionRow[],
+  minimumConversions = 3,
+): KpiValue {
+  const metingen: DurationMeasurement[] = [];
+  for (const rij of rows) {
+    if (
+      rij.convertedAt !== null &&
+      rij.convertedAt.getTime() >= rij.registeredAt.getTime()
+    ) {
+      metingen.push({ startAt: rij.registeredAt, endAt: rij.convertedAt });
+    }
+  }
+  return mediaanInDagen(metingen, DEF_TIME_TO_PAID, minimumConversions);
+}
+
+/** Eventnamen die een afgeronde checkout markeren (abonnementswijziging). */
+const CHECKOUT_VOLTOOID_EVENTS: ReadonlySet<string> = new Set([
+  "subscription_started",
+  "subscription_upgraded",
+  "subscription_downgraded",
+]);
+
+const DEF_CHECKOUT_CONVERSION =
+  "Aandeel gestarte checkouts (checkout_started) dat eindigt in een abonnementsstart of -wijziging; minimaal 5 gestarte checkouts.";
+
+/**
+ * Checkoutconversie op basis van events: voltooide checkouts
+ * (subscription_started/upgraded/downgraded) gedeeld door checkout_started.
+ * De uitkomst is begrensd op 1 (een abonnementswijziging zonder geregistreerde
+ * checkout kan de teller anders boven de noemer tillen).
+ */
+export function checkoutConversion(
+  events: AnalyticsEventRow[],
+  minimumCheckouts = 5,
+): KpiValue {
+  const gestart = events.filter((e) => e.name === "checkout_started").length;
+  if (gestart < minimumCheckouts) return onvoldoendeData(DEF_CHECKOUT_CONVERSION);
+  const voltooid = events.filter((e) => CHECKOUT_VOLTOOID_EVENTS.has(e.name)).length;
+  return kpi(Math.min(1, voltooid / gestart), DEF_CHECKOUT_CONVERSION);
+}
+
+/** Event met plan-context, voor conversie per plan. */
+export interface PlanEventRow {
+  name: string;
+  /** Plancode uit de event-envelope; null wanneer niet gezet. */
+  plan: string | null;
+}
+
+export interface SegmentConversionEntry {
+  segment: string;
+  total: number;
+  converted: number;
+  /** Conversie (0–1); null bij een te kleine groep. */
+  rate: number | null;
+  insufficientData: boolean;
+}
+
+export interface SegmentConversionResult {
+  entries: SegmentConversionEntry[];
+  definition: string;
+}
+
+const DEF_CONVERSION_BY_PLAN =
+  "Checkoutconversie per plan: afgeronde abonnementsstarts/-wijzigingen gedeeld door gestarte checkouts voor dat plan; groepen kleiner dan 3 tonen onvoldoende data.";
+
+/** Checkoutconversie per plancode; deterministisch gesorteerd op plancode. */
+export function conversionByPlan(
+  events: PlanEventRow[],
+  minimumGroupSize = 3,
+): SegmentConversionResult {
+  const perPlan = new Map<string, { gestart: number; voltooid: number }>();
+  for (const event of events) {
+    if (event.plan === null) continue;
+    const isStart = event.name === "checkout_started";
+    const isVoltooid = CHECKOUT_VOLTOOID_EVENTS.has(event.name);
+    if (!isStart && !isVoltooid) continue;
+    const groep = perPlan.get(event.plan) ?? { gestart: 0, voltooid: 0 };
+    if (isStart) groep.gestart += 1;
+    if (isVoltooid) groep.voltooid += 1;
+    perPlan.set(event.plan, groep);
+  }
+
+  const entries: SegmentConversionEntry[] = Array.from(perPlan.entries())
+    .map(([segment, { gestart, voltooid }]) => {
+      const teKlein = gestart < minimumGroupSize;
+      return {
+        segment,
+        total: gestart,
+        converted: voltooid,
+        rate: teKlein || gestart === 0 ? null : Math.min(1, voltooid / gestart),
+        insufficientData: teKlein,
+      };
+    })
+    .sort((a, b) => a.segment.localeCompare(b.segment));
+
+  return { entries, definition: DEF_CONVERSION_BY_PLAN };
+}
+
+const DEF_CONVERSION_BY_SOURCE =
+  "Trial-naar-betaald-conversie per acquisitiebron; groepen kleiner dan 3 tonen onvoldoende data.";
+
+/**
+ * Trial-naar-betaald per acquisitiebron. Organisaties zonder bron vallen in
+ * het segment "onbekend". Deterministisch gesorteerd op segment.
+ */
+export function conversionByAcquisitionSource(
+  rows: TrialConversionRow[],
+  minimumGroupSize = 3,
+): SegmentConversionResult {
+  const perBron = new Map<string, { totaal: number; betaald: number }>();
+  for (const rij of rows) {
+    const segment = rij.acquisitionSource ?? "onbekend";
+    const groep = perBron.get(segment) ?? { totaal: 0, betaald: 0 };
+    groep.totaal += 1;
+    if (rij.convertedAt !== null) groep.betaald += 1;
+    perBron.set(segment, groep);
+  }
+
+  const entries: SegmentConversionEntry[] = Array.from(perBron.entries())
+    .map(([segment, { totaal, betaald }]) => {
+      const teKlein = totaal < minimumGroupSize;
+      return {
+        segment,
+        total: totaal,
+        converted: betaald,
+        rate: teKlein ? null : betaald / totaal,
+        insufficientData: teKlein,
+      };
+    })
+    .sort((a, b) => a.segment.localeCompare(b.segment));
+
+  return { entries, definition: DEF_CONVERSION_BY_SOURCE };
+}
+
+// =====================================================================
+// Gebruiks-KPI's (productgebruik op basis van events)
+// =====================================================================
+
+/** Eén analytics-event met organisatie en tijdstip, voor gebruiks-KPI's. */
+export interface UsageEventRow {
+  name: string;
+  organizationId: string | null;
+  createdAt: Date;
+}
+
+/** Events binnen de laatste `days` dagen vóór `now`. */
+function eventsInPeriode(
+  events: UsageEventRow[],
+  now: Date,
+  days: number,
+): UsageEventRow[] {
+  const vanaf = now.getTime() - days * MS_PER_DAG;
+  return events.filter(
+    (e) => e.createdAt.getTime() >= vanaf && e.createdAt.getTime() <= now.getTime(),
+  );
+}
+
+/** Distinct organisaties met minstens één event in de periode. */
+function actieveOrganisaties(
+  events: UsageEventRow[],
+  now: Date,
+  days: number,
+  eventName?: string,
+): Set<string> {
+  const orgs = new Set<string>();
+  for (const event of eventsInPeriode(events, now, days)) {
+    if (event.organizationId === null) continue;
+    if (eventName !== undefined && event.name !== eventName) continue;
+    orgs.add(event.organizationId);
+  }
+  return orgs;
+}
+
+const DEF_WEEKLY_ACTIVE_PRACTICES =
+  "WAP: aantal praktijken met minstens één productactie (event) in de afgelopen 7 dagen.";
+
+export function weeklyActivePractices(
+  events: UsageEventRow[],
+  now: Date,
+): KpiValue {
+  return kpi(actieveOrganisaties(events, now, 7).size, DEF_WEEKLY_ACTIVE_PRACTICES);
+}
+
+const DEF_MONTHLY_ACTIVE_PRACTICES =
+  "MAP: aantal praktijken met minstens één productactie (event) in de afgelopen 30 dagen.";
+
+export function monthlyActivePractices(
+  events: UsageEventRow[],
+  now: Date,
+): KpiValue {
+  return kpi(actieveOrganisaties(events, now, 30).size, DEF_MONTHLY_ACTIVE_PRACTICES);
+}
+
+const DEF_MATCH_STUDIO_PRACTICES =
+  "Aantal praktijken dat de Match Studio (simulatie) gebruikte in de afgelopen 30 dagen.";
+
+export function matchStudioPractices(
+  events: UsageEventRow[],
+  now: Date,
+): KpiValue {
+  return kpi(
+    actieveOrganisaties(events, now, 30, "match_simulation_run").size,
+    DEF_MATCH_STUDIO_PRACTICES,
+  );
+}
+
+const DEF_SIMULATIONS_PER_PRACTICE =
+  "Gemiddeld aantal Match Studio-simulaties per simulerende praktijk in de afgelopen 30 dagen; onvoldoende data zonder simulerende praktijken.";
+
+export function simulationsPerPractice(
+  events: UsageEventRow[],
+  now: Date,
+): KpiValue {
+  const simulaties = eventsInPeriode(events, now, 30).filter(
+    (e) => e.name === "match_simulation_run",
+  );
+  const orgs = new Set(
+    simulaties
+      .map((e) => e.organizationId)
+      .filter((id): id is string => id !== null),
+  );
+  if (orgs.size === 0) return onvoldoendeData(DEF_SIMULATIONS_PER_PRACTICE);
+  return kpi(simulaties.length / orgs.size, DEF_SIMULATIONS_PER_PRACTICE);
+}
+
+function periodeTelling(
+  events: UsageEventRow[],
+  now: Date,
+  eventName: string,
+  definition: string,
+): KpiValue {
+  const aantal = eventsInPeriode(events, now, 30).filter(
+    (e) => e.name === eventName,
+  ).length;
+  return kpi(aantal, definition);
+}
+
+const DEF_INVITATIONS_SENT =
+  "Aantal verstuurde kandidaat-uitnodigingen (candidate_invited) in de afgelopen 30 dagen.";
+
+export function invitationsSent(events: UsageEventRow[], now: Date): KpiValue {
+  return periodeTelling(events, now, "candidate_invited", DEF_INVITATIONS_SENT);
+}
+
+const DEF_INTERVIEWS_SCHEDULED =
+  "Aantal ingeplande kennismakingsgesprekken (interview_scheduled) in de afgelopen 30 dagen.";
+
+export function interviewsScheduled(
+  events: UsageEventRow[],
+  now: Date,
+): KpiValue {
+  return periodeTelling(
+    events,
+    now,
+    "interview_scheduled",
+    DEF_INTERVIEWS_SCHEDULED,
+  );
+}
+
+const DEF_PLACEMENTS =
+  "Aantal plaatsingen (vacancy_filled) in de afgelopen 30 dagen.";
+
+export function placements(events: UsageEventRow[], now: Date): KpiValue {
+  return periodeTelling(events, now, "vacancy_filled", DEF_PLACEMENTS);
+}
+
+const DEF_CAPACITY_PLANNER_PRACTICES =
+  "Aantal praktijken dat de bezettingsplanner bekeek (capacity_planner_viewed) in de afgelopen 30 dagen.";
+
+export function capacityPlannerPractices(
+  events: UsageEventRow[],
+  now: Date,
+): KpiValue {
+  return kpi(
+    actieveOrganisaties(events, now, 30, "capacity_planner_viewed").size,
+    DEF_CAPACITY_PLANNER_PRACTICES,
+  );
+}

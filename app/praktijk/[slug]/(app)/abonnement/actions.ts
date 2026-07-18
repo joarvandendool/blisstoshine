@@ -1,6 +1,9 @@
 "use server";
 
 // Server actions van de abonnementspagina:
+// - startCheckoutAction / annuleerCheckoutAction: leggen checkout_started en
+//   checkout_abandoned vast wanneer de bevestigingsstap opent of wordt
+//   geannuleerd (server-side getrackt, met geverifieerd membership);
 // - wijzigPlanAction: upgrade/downgrade via de billing-provider
 //   (startSubscription vanaf trial of zonder abonnement, changePlan tussen
 //   betaalde plannen) + de events subscription_started/upgraded/downgraded;
@@ -17,7 +20,12 @@ import { z } from "zod";
 import { AuthzError } from "@/lib/authz";
 import { track } from "@/lib/analytics";
 import { getActiveSubscription, getBillingProvider } from "@/lib/billing";
-import { PLAN_CATALOG, PLAN_CODES, type PlanCode } from "@/domain/entitlements";
+import {
+  PLAN_CATALOG,
+  PLAN_CODES,
+  getPlanVersion,
+  type PlanCode,
+} from "@/domain/entitlements";
 import { getOrgForUserBySlug } from "@/server/organizations";
 
 // ---------------------------------------------------------------------------
@@ -58,6 +66,66 @@ function datumLang(datum: Date): string {
     month: "long",
     year: "numeric",
   });
+}
+
+// ---------------------------------------------------------------------------
+// Checkout-events (bevestigingsstap geopend / geannuleerd)
+// ---------------------------------------------------------------------------
+
+/**
+ * Legt checkout_started vast wanneer de bevestigingsstap opent. Server-side
+ * getrackt zodat het event altijd bij een geverifieerd membership hoort.
+ * Faalt stil: een mislukt event mag de checkout nooit blokkeren.
+ */
+export async function startCheckoutAction(
+  slug: string,
+  invoer: unknown,
+): Promise<void> {
+  const parsed = wijzigSchema.safeParse(invoer);
+  if (!parsed.success) return;
+  const { planCode, interval } = parsed.data;
+
+  try {
+    const { ctx } = await getOrgForUserBySlug(slug, "billing.manage");
+    const versie = getPlanVersion(planCode);
+    await track("checkout_started", {
+      organizationId: ctx.organizationId,
+      userId: ctx.user.id,
+      plan: planCode,
+      context: {
+        interval,
+        prijsCents:
+          interval === "yearly" ? versie.priceYearlyCents : versie.priceMonthlyCents,
+      },
+    });
+  } catch (fout) {
+    console.error("Abonnement: checkout_started niet vastgelegd:", fout);
+  }
+}
+
+/**
+ * Legt checkout_abandoned vast wanneer de bevestigingsstap wordt geannuleerd.
+ * Faalt stil, om dezelfde reden als startCheckoutAction.
+ */
+export async function annuleerCheckoutAction(
+  slug: string,
+  invoer: unknown,
+): Promise<void> {
+  const parsed = wijzigSchema.safeParse(invoer);
+  if (!parsed.success) return;
+  const { planCode, interval } = parsed.data;
+
+  try {
+    const { ctx } = await getOrgForUserBySlug(slug, "billing.manage");
+    await track("checkout_abandoned", {
+      organizationId: ctx.organizationId,
+      userId: ctx.user.id,
+      plan: planCode,
+      context: { interval },
+    });
+  } catch (fout) {
+    console.error("Abonnement: checkout_abandoned niet vastgelegd:", fout);
+  }
 }
 
 // ---------------------------------------------------------------------------

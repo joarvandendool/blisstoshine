@@ -34,10 +34,12 @@ import {
   SectionHeading,
   type BadgeTone,
 } from "@/components/ui";
+import { MatchShape } from "@/components/MatchShape";
 import {
   PlanKiezer,
   type KiesbaarPlanCode,
   type PlanKaartData,
+  type VergelijkRij,
 } from "./plan-kiezer";
 
 export const dynamic = "force-dynamic";
@@ -78,10 +80,10 @@ function aantalTekst(aantal: number | null, enkelvoud: string, meervoud: string)
   return `${aantal} ${aantal === 1 ? enkelvoud : meervoud}`;
 }
 
-/** Kernfeatures van een plan als Nederlandse lijst, afgeleid uit de catalogus. */
-function kernfeatures(set: EntitlementSet): string[] {
+/** Compacte limietregels van een plan, afgeleid uit de catalogus. */
+function inbegrepenLimieten(set: EntitlementSet): string[] {
   const uitnodigLimiet = limitOf(set, "max_candidate_invites_per_month");
-  const uit: string[] = [
+  return [
     aantalTekst(limitOf(set, "max_locations"), "locatie", "locaties"),
     aantalTekst(
       limitOf(set, "max_active_vacancies"),
@@ -90,22 +92,31 @@ function kernfeatures(set: EntitlementSet): string[] {
     ),
     aantalTekst(limitOf(set, "max_members"), "teamlid", "teamleden"),
     uitnodigLimiet === null
-      ? "Onbeperkt kandidaten uitnodigen"
-      : `${uitnodigLimiet} kandidaat-uitnodigingen per maand`,
+      ? "onbeperkt uitnodigen"
+      : `${uitnodigLimiet} uitnodigingen per maand`,
   ];
-  if (can(set, "match_studio_full")) uit.push("Volledige Match Studio met simulatie");
-  if (can(set, "talent_radar")) uit.push("Talent Radar-rapport per vacature");
-  if (can(set, "opportunity_engine")) {
-    uit.push("Opportunity-engine: maak matches alsnog mogelijk");
+}
+
+/** Waarde van één entitlement voor de vergelijkingstabel, in het Nederlands. */
+function vergelijkWaarde(set: EntitlementSet, key: EntitlementKey): string {
+  if (key === "analytics_level") {
+    return set.analytics_level.meta?.level === "advanced" ? "Uitgebreid" : "Basis";
   }
-  if (set.analytics_level.meta?.level === "advanced") {
-    uit.push("Uitgebreide analytics");
-  }
-  if (can(set, "export_enabled")) uit.push("Exporteren van rapporten en lijsten");
-  if (can(set, "candidate_pools")) uit.push("Kandidaat-pools");
-  if (can(set, "cross_location_matching")) uit.push("Matching over locaties heen");
-  if (can(set, "api_access")) uit.push("API-toegang");
-  return uit;
+  if (!can(set, key)) return "—";
+  const limiet = limitOf(set, key);
+  if (limiet === null) return "✓";
+  return String(limiet);
+}
+
+/** Volledige vergelijkingstabel: alle entitlements per kiesbaar plan. */
+function vergelijkingsRijen(sets: EntitlementSet[]): VergelijkRij[] {
+  return ENTITLEMENT_KEYS.map((key) => {
+    const label = ENTITLEMENT_LABELS[key];
+    return {
+      label: `${label.charAt(0).toUpperCase()}${label.slice(1)}`,
+      waarden: sets.map((set) => vergelijkWaarde(set, key)),
+    };
+  });
 }
 
 /* ------------------------------ deelweergaven ------------------------------ */
@@ -305,18 +316,29 @@ export default async function AbonnementPagina({
   ];
 
   /* ---- planvergelijking uit de catalogus ---- */
-  const plannen: PlanKaartData[] = KIESBARE_PLANNEN.map((code) => {
+  const planSets = KIESBARE_PLANNEN.map((code) => entitlementsFor(code));
+  const plannen: PlanKaartData[] = KIESBARE_PLANNEN.map((code, index) => {
+    const definitie = PLAN_CATALOG[code];
     const versie = getPlanVersion(code);
     return {
       code,
-      naam: PLAN_CATALOG[code].name,
+      naam: definitie.name,
+      tagline: definitie.tagline ?? "",
+      outcomes: [...(definitie.outcomes ?? [])],
+      inbegrepen: inbegrepenLimieten(planSets[index]),
       prijsMaandCents: versie.priceMonthlyCents,
       prijsJaarCents: versie.priceYearlyCents,
       opAanvraag: versie.meta?.pricing === "contract",
-      kernfeatures: kernfeatures(entitlementsFor(code)),
       isHuidig: effectief.planCode === code,
     };
   });
+  const vergelijking = vergelijkingsRijen(planSets);
+
+  // Zonder contextuele aanbeveling (?benodigd=…) is Growth het aanbevolen
+  // plan — tenzij het al het huidige plan is.
+  if (aanbevolenCode === null && effectief.planCode !== "growth") {
+    aanbevolenCode = "growth";
+  }
 
   const kanOpzeggen =
     abonnement !== null &&
@@ -445,20 +467,31 @@ export default async function AbonnementPagina({
 
       {/* planvergelijking + acties */}
       <section aria-labelledby="plannen-titel" className="flex flex-col gap-4">
-        <SectionHeading
-          eyebrow="Plannen"
-          title="Vergelijk de"
-          accent="plannen"
-          description="Wissel wanneer je wilt: een wijziging gaat direct in. In deze release worden betalingen gesimuleerd — er wordt niets afgeschreven."
-        />
+        <div className="flex flex-col items-start gap-6 sm:flex-row sm:items-center sm:justify-between">
+          <SectionHeading
+            eyebrow="Plannen"
+            title="Kies het plan dat bij je"
+            accent="ambitie past"
+            description="Elk plan draait om wat je ermee bereikt: van je eerste vacature tot structureel werven over meerdere locaties. Wissel wanneer je wilt — een wijziging gaat direct in."
+          />
+          {/* pricinghero: de matchvorm als visuele signatuur van het aanbod */}
+          <MatchShape
+            score={92}
+            size="hero"
+            showScore={false}
+            className="hidden shrink-0 sm:inline-flex"
+          />
+        </div>
         <h2 id="plannen-titel" className="sr-only">
           Planvergelijking
         </h2>
         <PlanKiezer
           slug={org.slug}
+          organizationId={ctx.organizationId}
           magBeheren={magBeheren}
           huidigPlanCode={effectief.planCode}
           plannen={plannen}
+          vergelijking={vergelijking}
           aanbevolenCode={aanbevolenCode}
           kanOpzeggen={kanOpzeggen}
           periodeEindeIso={abonnement?.currentPeriodEnd.toISOString() ?? null}

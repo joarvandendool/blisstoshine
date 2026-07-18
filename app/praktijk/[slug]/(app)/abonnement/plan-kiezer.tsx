@@ -1,12 +1,19 @@
 "use client";
 
-// PlanKiezer — de interactieve planvergelijking van de abonnementspagina.
+// PlanKiezer — de interactieve, waardegerichte planvergelijking van de
+// abonnementspagina.
 //
-// - Interval-toggle (maandelijks/jaarlijks met korting) verandert alleen de
-//   getoonde prijs; het gekozen interval gaat mee bij een abonnementsstart.
-// - Het huidige plan is gemarkeerd met een badge én een rand (nooit alleen
-//   kleur); het aanbevolen plan (uit ?benodigd=…) krijgt een "Aanbevolen"-tag.
-// - Multi-locatie heeft contractpricing: "op aanvraag", geen zelfbediening.
+// - Elke plankaart opent met een uitkomstregel (tagline) en concrete
+//   uitkomsten uit de centrale catalogus — geen kale featurelijst.
+// - Interval-toggle (maandelijks/jaarlijks met korting); het gekozen interval
+//   gaat mee de checkout in.
+// - Checkout-flow: klik op plan → bevestigingsstap met samenvatting, prijs en
+//   periode (checkout_started) → bevestigen (subscription_started/upgraded/
+//   downgraded via de server action) → succes met MatchShape-viering.
+//   Annuleren in de bevestigingsstap → checkout_abandoned.
+// - "Vergelijk alle functies" opent de volledige vergelijkingstabel en meldt
+//   éénmalig plan_compared via POST /api/events.
+// - Multi-locatie heeft contractpricing: "Plan een gesprek", geen zelfbediening.
 // - Opzeggen (per periode-einde) gebeurt pas na expliciete bevestiging.
 // - Zonder billing.manage is alles read-only; de acties verdwijnen.
 //
@@ -14,9 +21,12 @@
 // gebruikt de lokale testprovider: testomgeving — geen echte betaling.
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { Badge, Button, Card, Chip, cx } from "@/components/ui";
+import { MatchShape } from "@/components/MatchShape";
 import {
+  annuleerCheckoutAction,
+  startCheckoutAction,
   wijzigPlanAction,
   zegOpAction,
   type PlanActieResultaat,
@@ -29,20 +39,35 @@ export type KiesbaarPlanCode = "essential" | "growth" | "multi_location";
 export interface PlanKaartData {
   code: KiesbaarPlanCode;
   naam: string;
+  /** Uitkomstregel uit de catalogus, bv. "Voor ketens en praktijkgroepen". */
+  tagline: string;
+  /** Concrete uitkomsten uit de catalogus. */
+  outcomes: string[];
+  /** Compacte limieten (locaties, vacatures, teamleden, uitnodigingen). */
+  inbegrepen: string[];
   prijsMaandCents: number;
   prijsJaarCents: number;
   /** Contractpricing: geen zelfbediening, prijs op aanvraag. */
   opAanvraag: boolean;
-  kernfeatures: string[];
   isHuidig: boolean;
+}
+
+/** Eén rij van de volledige vergelijkingstabel: label + waarde per plan. */
+export interface VergelijkRij {
+  label: string;
+  /** Waarden in dezelfde volgorde als `plannen`. */
+  waarden: string[];
 }
 
 export interface PlanKiezerProps {
   slug: string;
+  /** Voor het plan_compared-event; membership wordt server-side geverifieerd. */
+  organizationId: string;
   magBeheren: boolean;
   /** Huidige plancode ("trial", "essential", …) of null zonder abonnement. */
   huidigPlanCode: string | null;
   plannen: PlanKaartData[];
+  vergelijking: VergelijkRij[];
   /** Plan dat de ontbrekende functie uit ?benodigd=… bevat (of null). */
   aanbevolenCode: string | null;
   /** Alleen tonen wanneer er iets op te zeggen valt. */
@@ -84,9 +109,11 @@ function datumLang(iso: string): string {
 
 export function PlanKiezer({
   slug,
+  organizationId,
   magBeheren,
   huidigPlanCode,
   plannen,
+  vergelijking,
   aanbevolenCode,
   kanOpzeggen,
   periodeEindeIso,
@@ -98,22 +125,85 @@ export function PlanKiezer({
   const [bezigMet, setBezigMet] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const voerUit = (sleutel: string, actie: () => Promise<PlanActieResultaat>) => {
+  // Checkout-bevestigingsstap: het gekozen plan + het interval van dat moment.
+  const [checkout, setCheckout] = useState<{
+    plan: PlanKaartData;
+    interval: Interval;
+  } | null>(null);
+  // Succesviering na een geslaagde wijziging.
+  const [succes, setSucces] = useState<{ planNaam: string; melding: string } | null>(
+    null,
+  );
+
+  // Volledige vergelijking: plan_compared wordt éénmalig gemeld.
+  const [toonVergelijking, setToonVergelijking] = useState(false);
+  const vergelijkingGemeld = useRef(false);
+
+  const openVergelijking = () => {
+    setToonVergelijking((open) => !open);
+    if (vergelijkingGemeld.current) return;
+    vergelijkingGemeld.current = true;
+    void fetch("/api/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "plan_compared", organizationId }),
+    }).catch(() => {
+      // Analytics faalt nooit hard richting de gebruiker.
+    });
+  };
+
+  /* ---- checkout-flow ---- */
+
+  const kiesPlan = (plan: PlanKaartData) => {
     setMelding(null);
-    setBezigMet(sleutel);
+    setSucces(null);
+    setCheckout({ plan, interval });
+    // checkout_started wordt server-side vastgelegd; fire-and-forget.
+    void startCheckoutAction(slug, { planCode: plan.code, interval });
+  };
+
+  const annuleerCheckout = () => {
+    if (!checkout) return;
+    // checkout_abandoned server-side vastleggen; fire-and-forget.
+    void annuleerCheckoutAction(slug, {
+      planCode: checkout.plan.code,
+      interval: checkout.interval,
+    });
+    setCheckout(null);
+  };
+
+  const bevestigCheckout = () => {
+    if (!checkout) return;
+    const { plan, interval: gekozenInterval } = checkout;
+    setMelding(null);
+    setBezigMet(plan.code);
     startTransition(async () => {
-      const resultaat = await actie();
+      const resultaat = await wijzigPlanAction(slug, {
+        planCode: plan.code,
+        interval: gekozenInterval,
+      });
+      setBezigMet(null);
+      if (resultaat.ok) {
+        setCheckout(null);
+        setSucces({ planNaam: plan.naam, melding: resultaat.melding });
+        router.refresh();
+      } else {
+        setMelding(resultaat);
+      }
+    });
+  };
+
+  const zegOp = () => {
+    setMelding(null);
+    setBezigMet("opzeggen");
+    startTransition(async () => {
+      const resultaat = await zegOpAction(slug);
       setMelding(resultaat);
       setBezigMet(null);
       setBevestigOpzeggen(false);
       if (resultaat.ok) router.refresh();
     });
   };
-
-  const kiesPlan = (planCode: KiesbaarPlanCode) =>
-    voerUit(planCode, () => wijzigPlanAction(slug, { planCode, interval }));
-
-  const zegOp = () => voerUit("opzeggen", () => zegOpAction(slug));
 
   /** Knoptekst: start, upgrade of downgrade — afhankelijk van het huidige plan. */
   const knopTekst = (plan: PlanKaartData): string => {
@@ -126,6 +216,101 @@ export function PlanKiezer({
       : `Downgrade naar ${plan.naam}`;
   };
 
+  /* ---- succesviering: MatchShape + melding ---- */
+  if (succes) {
+    return (
+      <Card strong className="flex flex-col items-center gap-4 py-10 text-center">
+        <MatchShape score={97} size="hero" showScore={false} />
+        <h3 className="text-2xl font-semibold tracking-tight text-ink">
+          Welkom bij{" "}
+          <em className="font-serif italic font-bold text-blauw-600">
+            {succes.planNaam}
+          </em>
+        </h3>
+        <p className="max-w-md text-[15px] leading-relaxed text-ink/70">
+          {succes.melding}
+        </p>
+        <Button variant="secondary" onClick={() => setSucces(null)}>
+          Terug naar het planoverzicht
+        </Button>
+      </Card>
+    );
+  }
+
+  /* ---- bevestigingsstap (checkout) ---- */
+  if (checkout) {
+    const { plan, interval: gekozenInterval } = checkout;
+    const prijsCents =
+      gekozenInterval === "yearly" ? plan.prijsJaarCents : plan.prijsMaandCents;
+    return (
+      <Card strong className="flex max-w-xl flex-col gap-5">
+        <div className="flex flex-col gap-1">
+          <h3 className="text-xl font-semibold tracking-tight text-ink">
+            Bevestig je overstap naar {plan.naam}
+          </h3>
+          <p className="text-sm text-ink/70">{plan.tagline}</p>
+        </div>
+
+        <dl className="flex flex-col gap-2 border-y border-ink/10 py-4 text-[15px]">
+          <div className="flex items-center justify-between gap-3">
+            <dt className="font-medium text-ink/70">Plan</dt>
+            <dd className="font-semibold text-ink">{plan.naam}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="font-medium text-ink/70">Facturatie</dt>
+            <dd className="font-semibold text-ink">
+              {gekozenInterval === "yearly"
+                ? "Jaarlijks (2 maanden korting)"
+                : "Maandelijks"}
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="font-medium text-ink/70">Prijs</dt>
+            <dd className="font-semibold tabular-nums text-ink">
+              {euro(prijsCents)}{" "}
+              <span className="font-medium text-ink/60">
+                {gekozenInterval === "yearly" ? "per jaar" : "per maand"}
+              </span>
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="font-medium text-ink/70">Ingangsdatum</dt>
+            <dd className="font-semibold text-ink">Direct</dd>
+          </div>
+        </dl>
+
+        <p className="text-sm font-medium text-ink/60">
+          Testomgeving — geen echte betaling. Er wordt niets afgeschreven.
+        </p>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button onClick={bevestigCheckout} disabled={isPending}>
+            {bezigMet === plan.code
+              ? "Bezig met bevestigen…"
+              : `Bevestig ${plan.naam}`}
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={annuleerCheckout}
+            disabled={isPending}
+          >
+            Annuleren
+          </Button>
+        </div>
+
+        {melding && !melding.ok ? (
+          <p
+            role="alert"
+            className="rounded-2xl bg-roze-100 px-4 py-3 text-sm font-medium text-roze-800"
+          >
+            {melding.melding}
+          </p>
+        ) : null}
+      </Card>
+    );
+  }
+
+  /* ---- planoverzicht ---- */
   return (
     <div className="flex flex-col gap-6">
       {/* interval-toggle */}
@@ -171,10 +356,11 @@ export function PlanKiezer({
           return (
             <li key={plan.code} className="h-full">
               <Card
-                strong={plan.isHuidig}
+                strong={plan.isHuidig || aanbevolen}
                 className={cx(
                   "flex h-full flex-col gap-4",
                   plan.isHuidig && "border-2 border-blauw-600",
+                  aanbevolen && "border-2 border-roze-500",
                 )}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -187,6 +373,11 @@ export function PlanKiezer({
                     <Badge tone="roze">Aanbevolen</Badge>
                   ) : null}
                 </div>
+
+                {/* uitkomstregel */}
+                <p className="text-[15px] font-medium leading-snug text-ink/80">
+                  {plan.tagline}
+                </p>
 
                 {/* prijs */}
                 {plan.opAanvraag ? (
@@ -228,20 +419,28 @@ export function PlanKiezer({
                   </div>
                 )}
 
-                {/* kernfeatures */}
-                <ul className="flex flex-1 flex-col gap-2">
-                  {plan.kernfeatures.map((feature) => (
+                {/* uitkomsten */}
+                <ul className="flex flex-col gap-2">
+                  {plan.outcomes.map((uitkomst) => (
                     <li
-                      key={feature}
+                      key={uitkomst}
                       className="flex gap-2 text-sm leading-relaxed text-ink/80"
                     >
-                      <span aria-hidden="true" className="font-semibold text-blauw-600">
+                      <span
+                        aria-hidden="true"
+                        className="font-semibold text-blauw-600"
+                      >
                         ✓
                       </span>
-                      {feature}
+                      {uitkomst}
                     </li>
                   ))}
                 </ul>
+
+                {/* compacte limieten uit de catalogus */}
+                <p className="mt-auto border-t border-ink/10 pt-3 text-[13px] leading-relaxed text-ink/60">
+                  {plan.inbegrepen.join(" · ")}
+                </p>
 
                 {/* actie */}
                 {plan.isHuidig ? (
@@ -250,21 +449,21 @@ export function PlanKiezer({
                   </p>
                 ) : !magBeheren ? null : plan.opAanvraag ? (
                   <a
-                    href="mailto:info@mondzorgwerkt.nl?subject=Multi-locatie%20op%20aanvraag"
+                    href="mailto:info@mondzorgwerkt.nl?subject=Multi-locatie%20%E2%80%94%20plan%20een%20gesprek"
                     className={cx(
                       "inline-flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-[15px] font-semibold",
                       "glass text-ink transition-colors duration-150 hover:bg-white/90 motion-reduce:transition-none",
                     )}
                   >
-                    Vraag een voorstel aan
+                    Plan een gesprek
                   </a>
                 ) : (
                   <Button
-                    onClick={() => kiesPlan(plan.code)}
+                    onClick={() => kiesPlan(plan)}
                     disabled={isPending}
                     variant={aanbevolen ? "primary" : "secondary"}
                   >
-                    {bezigMet === plan.code ? "Bezig met wijzigen…" : knopTekst(plan)}
+                    {knopTekst(plan)}
                   </Button>
                 )}
               </Card>
@@ -272,6 +471,72 @@ export function PlanKiezer({
           );
         })}
       </ul>
+
+      {/* volledige vergelijking (plan_compared) */}
+      <div className="flex flex-col gap-4">
+        <div>
+          <Button
+            variant="ghost"
+            onClick={openVergelijking}
+            aria-expanded={toonVergelijking}
+          >
+            {toonVergelijking
+              ? "Verberg de volledige vergelijking"
+              : "Vergelijk alle functies"}
+          </Button>
+        </div>
+        {toonVergelijking ? (
+          <Card className="overflow-x-auto">
+            <table className="w-full min-w-[36rem] text-left text-sm text-ink">
+              <caption className="sr-only">
+                Volledige vergelijking van alle functies per plan
+              </caption>
+              <thead>
+                <tr className="border-b border-ink/10">
+                  <th
+                    scope="col"
+                    className="py-2 pr-3 text-xs font-semibold uppercase tracking-[0.08em] text-ink/60"
+                  >
+                    Functie
+                  </th>
+                  {plannen.map((plan) => (
+                    <th
+                      key={plan.code}
+                      scope="col"
+                      className="py-2 pr-3 text-xs font-semibold uppercase tracking-[0.08em] text-ink/60"
+                    >
+                      {plan.naam}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {vergelijking.map((rij) => (
+                  <tr
+                    key={rij.label}
+                    className="border-b border-ink/5 last:border-b-0"
+                  >
+                    <th
+                      scope="row"
+                      className="py-2.5 pr-3 text-left font-medium text-ink"
+                    >
+                      {rij.label}
+                    </th>
+                    {rij.waarden.map((waarde, index) => (
+                      <td
+                        key={plannen[index]?.code ?? index}
+                        className="py-2.5 pr-3 text-ink/80"
+                      >
+                        {waarde}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        ) : null}
+      </div>
 
       <p className="text-sm font-medium text-ink/60">
         Testomgeving — geen echte betaling. Abonnementen worden in deze release
@@ -288,13 +553,17 @@ export function PlanKiezer({
               </h3>
               <p className="text-sm leading-relaxed text-ink/70">
                 Je abonnement blijft actief tot{" "}
-                {periodeEindeIso ? datumLang(periodeEindeIso) : "het einde van de lopende periode"}
+                {periodeEindeIso
+                  ? datumLang(periodeEindeIso)
+                  : "het einde van de lopende periode"}
                 . Daarna vervallen de functies van je plan; je gegevens en
                 vacatures blijven bewaard.
               </p>
               <div className="flex flex-wrap items-center gap-3">
                 <Button variant="danger" onClick={zegOp} disabled={isPending}>
-                  {bezigMet === "opzeggen" ? "Bezig met opzeggen…" : "Ja, zeg mijn abonnement op"}
+                  {bezigMet === "opzeggen"
+                    ? "Bezig met opzeggen…"
+                    : "Ja, zeg mijn abonnement op"}
                 </Button>
                 <Button
                   variant="secondary"

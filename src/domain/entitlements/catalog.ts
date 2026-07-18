@@ -74,6 +74,16 @@ export interface PlanVersionDefinition {
 export interface PlanDefinition {
   code: PlanCode;
   name: string;
+  /**
+   * Uitkomstregel voor de abonnementspagina — voor wie is dit plan?
+   * Bv. "Voor praktijken die structureel willen werven en plannen".
+   */
+  tagline?: string;
+  /**
+   * Concrete uitkomsten/inhoud van het plan als korte Nederlandse regels,
+   * voor de plankaarten. Optioneel zodat bestaande structuren niet breken.
+   */
+  outcomes?: readonly string[];
   versions: PlanVersionDefinition[];
 }
 
@@ -110,6 +120,11 @@ export const PLAN_CATALOG: PlanCatalog = deepFreeze({
   trial: {
     code: "trial",
     name: "Proefperiode",
+    tagline: "Probeer Mondzorgwerkt 14 dagen vrijblijvend",
+    outcomes: [
+      "Zet je eerste vacature online en zie direct passende kandidaten",
+      "Ervaar de matching zonder verplichtingen",
+    ],
     versions: [
       {
         version: 1,
@@ -138,6 +153,12 @@ export const PLAN_CATALOG: PlanCatalog = deepFreeze({
   essential: {
     code: "essential",
     name: "Essential",
+    tagline: "Voor één praktijk met incidentele vacatures",
+    outcomes: [
+      "Eén locatie en een beperkt aantal actieve vacatures",
+      "Basismatching: zie direct welke kandidaten bij je vacature passen",
+      "Nodig kandidaten uit en volg iedereen in één kandidatenpipeline",
+    ],
     versions: [
       {
         version: 1,
@@ -165,6 +186,13 @@ export const PLAN_CATALOG: PlanCatalog = deepFreeze({
   growth: {
     code: "growth",
     name: "Growth",
+    tagline: "Voor praktijken die structureel willen werven en plannen",
+    outcomes: [
+      "Volledige Match Studio: zie welke aanpassing je kandidatenpool vergroot",
+      "Talent Radar en 'Maak deze match mogelijk' bij elke vacature",
+      "Meerdere teamleden en uitgebreide kandidatenpools",
+      "Bezettingsinzichten en conversieanalytics voor je planning",
+    ],
     versions: [
       {
         version: 1,
@@ -192,6 +220,13 @@ export const PLAN_CATALOG: PlanCatalog = deepFreeze({
   multi_location: {
     code: "multi_location",
     name: "Multi-locatie",
+    tagline: "Voor ketens en praktijkgroepen",
+    outcomes: [
+      "Centraal beheer over meerdere locaties",
+      "Cross-locatiematching: één kandidatenpool voor de hele groep",
+      "Geavanceerde rollen en consolidatierapportages",
+      "Integraties (API-toegang) en contractpricing op maat",
+    ],
     versions: [
       {
         version: 1,
