@@ -9,7 +9,13 @@ import type { ReactNode } from "react";
 import { AuthzError, requirePlatformAdmin } from "@/lib/authz";
 import { AppShell, type AppShellNavItem } from "@/components/AppShell";
 
-const INTERN_NAV: AppShellNavItem[] = [{ href: "/intern", label: "Overzicht" }];
+const INTERN_NAV: AppShellNavItem[] = [
+  { href: "/intern", label: "Overzicht" },
+  { href: "/intern/health", label: "Account health" },
+  { href: "/intern/monitor", label: "Marktmonitor" },
+  { href: "/intern/matching", label: "Matching" },
+  { href: "/intern/outbox", label: "Outbox" },
+];
 
 /** Nette 403-melding voor ingelogde gebruikers zonder platformbeheerrechten. */
 function GeenToegang() {

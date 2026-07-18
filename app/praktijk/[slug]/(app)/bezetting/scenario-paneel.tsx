@@ -206,7 +206,7 @@ export function ScenarioPaneel({ slug, locatieId, locaties, teamleden, scenarios
         description="Draai een scenario naast de huidige week. Het resultaat staat vast (simulatie) tot je het expliciet bevestigt of verwerpt."
       />
       <h2 id="scenario-titel" className="sr-only">
-        Staffing-scenario's
+        Staffing-scenario&apos;s
       </h2>
 
       {/* keuzekaarten */}
@@ -410,7 +410,7 @@ export function ScenarioPaneel({ slug, locatieId, locaties, teamleden, scenarios
       {/* eerdere scenario's */}
       {scenarios.length > 0 ? (
         <Card className="flex flex-col gap-3">
-          <h3 className="text-base font-semibold text-ink">Eerdere scenario's</h3>
+          <h3 className="text-base font-semibold text-ink">Eerdere scenario&apos;s</h3>
           <ul className="flex flex-col divide-y divide-ink/10">
             {scenarios.map((scenario) => (
               <li key={scenario.id} className="flex flex-wrap items-center justify-between gap-3 py-3">

@@ -39,6 +39,9 @@ export default async function PraktijkAppLayout({
     { href: `${basis}/bezetting`, label: "Bezetting" },
     { href: `${basis}/vacatures/nieuw`, label: "Vacature" },
     { href: `${basis}/radar`, label: "Radar" },
+    { href: `${basis}/team`, label: "Team", alleenDesktop: true },
+    { href: `${basis}/inzichten`, label: "Inzichten", alleenDesktop: true },
+    { href: `${basis}/integraties`, label: "Integraties", alleenDesktop: true },
     // Zes tabs op mobiel: "Abonnement" past daar niet onafgekapt — kort label.
     { href: `${basis}/abonnement`, label: "Abonnement", kort: "Plan" },
   ];

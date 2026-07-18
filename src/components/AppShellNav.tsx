@@ -15,6 +15,8 @@ export interface AppShellNavItem {
   label: string;
   /** Kort label voor de mobiele bottom tabs (valt terug op label). */
   kort?: string;
+  /** Niet tonen in de mobiele bottom tabs (voorkomt te veel tabs). */
+  alleenDesktop?: boolean;
 }
 
 /** Pad zonder hash/query, voor de actief-vergelijking. */
@@ -65,8 +67,11 @@ export function AppShellDesktopNav({ items }: { items: AppShellNavItem[] }) {
   );
 }
 
-export function AppShellMobileTabs({ items }: { items: AppShellNavItem[] }) {
+export function AppShellMobileTabs({ items: alleItems }: { items: AppShellNavItem[] }) {
   const pathname = usePathname();
+  // alleenDesktop-items horen niet in de bottom tabs (te veel tabs wordt
+  // onbedienbaar); ze blijven via de desktopnavigatie en URL's bereikbaar.
+  const items = alleItems.filter((item) => !item.alleenDesktop);
   const actief = actieveHref(pathname, items);
   return (
     <nav
