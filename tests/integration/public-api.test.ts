@@ -117,6 +117,12 @@ beforeAll(async () => {
   locatieA = { id: a.location.id };
   // multi_location-plan: api_access aan, geen vacaturelimiet.
   await getBillingProvider().changePlan(orgA.id, "multi_location");
+  // Publicatie-consent: zonder deze vlag bestaat de praktijk publiek niet
+  // (het praktijk-endpoint geeft dan 404 — zie public-site-direct.test.ts).
+  await prisma.organization.update({
+    where: { id: orgA.id },
+    data: { publicConsent: true, publicConsentAt: new Date() },
+  });
 
   alsGebruiker(ownerB.id);
   const b = await createOrganizationWithLocation({

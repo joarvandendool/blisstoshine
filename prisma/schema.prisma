@@ -46,7 +46,15 @@ model Organization {
   acquisitionSource String?
   activatedAt       DateTime? // practice_activated is eenmalig
   onboardingState   Json? // autosave van de commerciële onboarding
+  // Publicatie-consent voor de openbare praktijkpagina (/praktijken/[slug]):
+  // zonder expliciete toestemming bestaat de praktijk publiek niet. Het
+  // moment van toestemming wordt vastgelegd voor de audittrail.
+  publicConsent     Boolean    @default(false)
+  publicConsentAt   DateTime?
+  // Publieke omschrijving zoals getoond op de praktijkpagina (optioneel).
+  publicDescription String?
   createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @default(now()) @updatedAt
   archivedAt        DateTime?
 
   locations       PracticeLocation[]

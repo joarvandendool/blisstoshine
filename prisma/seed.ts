@@ -41,7 +41,7 @@ import {
 } from "@/domain/taxonomy";
 import { geocodePostcode } from "@/server/geo";
 import { berekenCompleteness, profileToMatchCandidate } from "@/server/candidates";
-import { vacancyToMatchVacancy } from "@/server/vacancies";
+import { ensureVacancySlug, vacancyToMatchVacancy } from "@/server/vacancies";
 
 // ---------------------------------------------------------------------------
 // Productieguard
@@ -429,6 +429,29 @@ async function zorgSnapshot(
 async function main(): Promise<void> {
   console.log("Seed gestart …");
 
+  // 0. Demo-hygiëne: e2e-runs (Playwright) maken via de echte app wegwerp-
+  // organisaties aan in deze database. Die vervuilen de openbare site zodra
+  // die op echte data draait (PUBLIC_DATA_SOURCE-default "direct"). Archiveer
+  // ze — publieke queries tonen alleen actieve organisaties; de e2e-suite
+  // maakt bij elke run verse exemplaren aan.
+  const gearchiveerd = await prisma.organization.updateMany({
+    where: {
+      status: "active",
+      OR: [
+        { name: { startsWith: "E2E Praktijk" } },
+        { name: { startsWith: "Debug Praktijk" } },
+        { name: { startsWith: "Beta Praktijk" } },
+        { name: { startsWith: "Shotpraktijk" } },
+        { name: "Testpraktijk Startflow" },
+        { name: "Hervatpraktijk" },
+      ],
+    },
+    data: { status: "archived", archivedAt: new Date() },
+  });
+  if (gearchiveerd.count > 0) {
+    console.log(`${gearchiveerd.count} e2e-testorganisatie(s) gearchiveerd.`);
+  }
+
   // 1. Plancatalogus en matchingconfiguratie.
   await syncPlanCatalog();
   await prisma.matchingConfigVersion.upsert({
@@ -487,6 +510,17 @@ async function main(): Promise<void> {
     "Mark Hendriks",
     praktijkHash,
   );
+  // Publicatie-consent + publieke omschrijving: De Lindeboom staat als
+  // openbare praktijkpagina op de site (vaste consentdatum voor reproduceer-
+  // baarheid van de demo).
+  const lindeboomPubliek = {
+    publicConsent: true,
+    publicConsentAt: new Date("2026-07-01T09:00:00.000Z"),
+    publicDescription:
+      "Familiepraktijk in het centrum van Utrecht met vier behandelkamers en " +
+      "een hecht team. We werken digitaal (TRIOS, OPG), plannen ruime " +
+      "behandeltijden en begeleiden nieuwe collega's met een vast inwerktraject.",
+  };
   const lindeboom = await prisma.organization.upsert({
     where: { slug: "mondzorgpraktijk-de-lindeboom" },
     create: {
@@ -495,8 +529,13 @@ async function main(): Promise<void> {
       kvkNumber: "64821973",
       billingEmail: "administratie@delindeboom.nl",
       acquisitionSource: "vakblad",
+      ...lindeboomPubliek,
     },
-    update: { name: "Mondzorgpraktijk De Lindeboom", status: "active" },
+    update: {
+      name: "Mondzorgpraktijk De Lindeboom",
+      status: "active",
+      ...lindeboomPubliek,
+    },
   });
   const lindeboomLocatie = await zorgLocatie(lindeboom.id, {
     name: "De Lindeboom — Utrecht Centrum",
@@ -521,6 +560,14 @@ async function main(): Promise<void> {
     "Pieter de Graaf",
     praktijkHash,
   );
+  const maasPubliek = {
+    publicConsent: true,
+    publicConsentAt: new Date("2026-07-11T10:00:00.000Z"),
+    publicDescription:
+      "Moderne tweekamerspraktijk aan de Wijnhaven in Rotterdam. We werken " +
+      "gestructureerd met iTero en Simplex, voor een patiëntenbestand met " +
+      "veel volwassenen en ouderen.",
+  };
   const aanDeMaas = await prisma.organization.upsert({
     where: { slug: "tandartsen-aan-de-maas" },
     create: {
@@ -529,8 +576,9 @@ async function main(): Promise<void> {
       kvkNumber: "77410258",
       billingEmail: "praktijk@aandemaas.nl",
       acquisitionSource: "google",
+      ...maasPubliek,
     },
-    update: { name: "Tandartsen aan de Maas", status: "active" },
+    update: { name: "Tandartsen aan de Maas", status: "active", ...maasPubliek },
   });
   const maasLocatie = await zorgLocatie(aanDeMaas.id, {
     name: "Tandartsen aan de Maas",
@@ -547,6 +595,47 @@ async function main(): Promise<void> {
   });
   await zorgLid(maasOwner.id, aanDeMaas.id, "owner");
   await zorgAbonnement(aanDeMaas.id, "trial", "trialing");
+
+  // 4b. Praktijk 3: Tandartspraktijk de Watertoren (Amsterdam) — bewust
+  // ZÓNDER publicatie-consent: haar vacature is publiek zichtbaar, maar de
+  // praktijkpagina (/praktijken/[slug]) bestaat niet. Zo is het consentpad
+  // lokaal met echte data te demonstreren.
+  const watertorenOwner = await zorgGebruiker(
+    "praktijk@dewatertoren.nl",
+    "Hessel Vermeer",
+    praktijkHash,
+  );
+  const watertoren = await prisma.organization.upsert({
+    where: { slug: "tandartspraktijk-de-watertoren" },
+    create: {
+      name: "Tandartspraktijk de Watertoren",
+      slug: "tandartspraktijk-de-watertoren",
+      kvkNumber: "58203716",
+      billingEmail: "praktijk@dewatertoren.nl",
+      acquisitionSource: "collega",
+      publicConsent: false,
+    },
+    update: {
+      name: "Tandartspraktijk de Watertoren",
+      status: "active",
+      publicConsent: false,
+      publicConsentAt: null,
+    },
+  });
+  const watertorenLocatie = await zorgLocatie(watertoren.id, {
+    name: "Tandartspraktijk de Watertoren",
+    street: "Nieuwmarkt",
+    houseNumber: "8",
+    postcode: "1011 AC",
+    treatmentRooms: 3,
+    traits: ["informeel", "rustig_tempo"],
+    equipment: ["opg", "airflow"],
+    software: ["oase"],
+    specializations: ["prothetiek"],
+    patientPopulation: ["volwassenen", "ouderen"],
+  });
+  await zorgLid(watertorenOwner.id, watertoren.id, "owner");
+  await zorgAbonnement(watertoren.id, "trial", "trialing");
 
   console.log("Praktijken, leden en abonnementen aangemaakt.");
 
@@ -936,6 +1025,32 @@ async function main(): Promise<void> {
     publishedAt: new Date("2026-07-10T10:00:00.000Z"),
   });
 
+  // (3b) Praktijk zonder publicatie-consent: de vacature is publiek
+  // zichtbaar, de praktijkpagina niet (consentdemo op echte data).
+  const vacatureWatertoren = await zorgVacature(watertoren.id, watertorenLocatie.id, {
+    title: "Tandartsassistent 2–3 dagen",
+    role: "tandartsassistent",
+    description:
+      "Tandartspraktijk de Watertoren in Amsterdam zoekt een tandartsassistent " +
+      "voor twee tot drie dagen per week. Rustig tempo, vast team en een " +
+      "patiëntenbestand met veel vaste gezichten.",
+    schedule: rooster({
+      wo: { ochtend: "required", middag: "required" },
+      vr: { ochtend: "preferred", middag: "preferred" },
+    }),
+    hoursMin: 16,
+    hoursMax: 24,
+    contractTypes: ["loondienst"],
+    salaryMin: 230_000,
+    salaryMax: 280_000,
+    criteria: {
+      software: { values: ["oase"], level: "preferred" },
+    },
+    culture: ["informeel", "rustig_tempo"],
+    status: "published",
+    publishedAt: new Date("2026-07-12T09:00:00.000Z"),
+  });
+
   // (4) Concept in de wizard.
   await zorgVacature(lindeboom.id, lindeboomLocatie.id, {
     title: "Tandarts met focus op implantologie (concept)",
@@ -983,7 +1098,20 @@ async function main(): Promise<void> {
     updatedAt: new Date("2026-06-20T14:00:00.000Z"),
   });
 
-  console.log("Vijf vacatures aangemaakt (3 gepubliceerd, 1 concept, 1 vervuld).");
+  // Stabiele publieke slugs voor alle (ooit) gepubliceerde vacatures, zodat
+  // de openbare site en /api/public/v1 direct na de seed werken (normaal
+  // kent publishVacancy de slug toe; de seed schrijft rechtstreeks).
+  for (const vacature of [
+    vacatureMondhygienist,
+    vacatureAssistent,
+    vacatureTandarts,
+    vacatureWatertoren,
+    vacaturePreventie,
+  ]) {
+    await ensureVacancySlug(vacature, vacature.location.city);
+  }
+
+  console.log("Zes vacatures aangemaakt (4 gepubliceerd, 1 concept, 1 vervuld) — met publieke slugs.");
 
   // 7. Pipeline-historie: snapshots, sollicitaties, uitnodigingen, gebruik.
   const snapshotEmma = await zorgSnapshot(
@@ -1334,6 +1462,9 @@ async function main(): Promise<void> {
   console.log("");
   console.log("  Praktijk 2 — Tandartsen aan de Maas (Rotterdam, trial)");
   console.log(`    praktijk@aandemaas.nl / ${WACHTWOORD_PRAKTIJK}  (owner)`);
+  console.log("");
+  console.log("  Praktijk 3 — Tandartspraktijk de Watertoren (Amsterdam, trial, GEEN publicatie-consent)");
+  console.log(`    praktijk@dewatertoren.nl / ${WACHTWOORD_PRAKTIJK}  (owner)`);
   console.log("");
   console.log("  Kandidaten (allemaal met hetzelfde wachtwoord)");
   console.log(`    kandidaat@demo.nl / ${WACHTWOORD_KANDIDAAT}  (Sanne de Vries, mondhygiënist Utrecht)`);

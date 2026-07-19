@@ -37,5 +37,10 @@ export default defineConfig({
     url: "http://localhost:3600",
     reuseExistingServer: true,
     timeout: 60_000,
+    // De e2e- en visuele suites (incl. alle screenshot-baselines) zijn
+    // gebouwd op de deterministische fixtures — de openbare site draait in
+    // productie op échte data (PUBLIC_DATA_SOURCE-default "direct"), maar
+    // hier expliciet op fixtures zodat de baselines stabiel blijven.
+    env: { PUBLIC_DATA_SOURCE: "fixtures" },
   },
 });

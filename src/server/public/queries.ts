@@ -7,13 +7,13 @@
 // - filters op regio werken op de afgeleide provincie en worden daarom in
 //   JS toegepast; alle andere filters gaan mee in de Prisma-query.
 
+import type { Weekday } from "@/domain/taxonomy";
 import { TALENT_RADAR_MIN_GROUP } from "@/lib/config";
 import { prisma } from "@/lib/db";
-import { ensureVacancySlug } from "@/server/vacancies";
+import { castCriteria, castSchedule, ensureVacancySlug } from "@/server/vacancies";
 import {
   buildPublicTaxonomyView,
   regionForCity,
-  toPublicJobSummary,
   toPublicJobView,
   toPublicPracticeView,
   type PublicJobSearchResult,
@@ -34,12 +34,32 @@ export const MAX_PAGE_SIZE = 50;
 export interface PublicJobFilters {
   /** Functiesleutel, bv. "mondhygienist". */
   role?: string;
-  /** Plaatsnaam (hoofdletterongevoelig, exact). */
+  /**
+   * Plaats of regio: hoofdletterongevoelige deelmatch op "stad provincie"
+   * (dezelfde semantiek als de openbare site) — "utrecht", "Zuid-Holland"
+   * en "utre" matchen dus allemaal.
+   */
   city?: string;
   /** Provincie (hoofdletterongevoelig, exact) — afgeleid van de stad. */
   region?: string;
+  /**
+   * Gevraagde werkdagen: een vacature matcht wanneer hij ál deze dagen
+   * vraagt (required of preferred), niet slechts één ervan.
+   */
+  days?: Weekday[];
+  /** Urenrange: overlap met hoursMin–hoursMax van de vacature. */
+  hoursMin?: number;
+  hoursMax?: number;
   /** Contractvorm, bv. "zzp". */
   employmentType?: string;
+  /** Apparatuur-taxonomiesleutel uit de vacaturecriteria. */
+  equipment?: string;
+  /** Software-taxonomiesleutel uit de vacaturecriteria. */
+  software?: string;
+  /** Specialisatie-taxonomiesleutel uit de vacaturecriteria. */
+  specialization?: string;
+  /** Organisatie-slug: alleen vacatures van deze praktijk. */
+  organization?: string;
   /** Alleen vacatures die op of na dit moment zijn bijgewerkt. */
   updatedSince?: Date;
   /** Pagina (1-based); standaard 1. */
@@ -55,9 +75,78 @@ async function metSlug(vacancy: VacancyMetContext): Promise<string> {
   return vacancy.slug ?? ensureVacancySlug(vacancy, vacancy.location.city);
 }
 
+/** Bevat het criterium deze taxonomiesleutel? Geen filter = altijd waar. */
+function criteriumBevat(values: string[] | undefined, sleutel?: string): boolean {
+  if (!sleutel) return true;
+  return (values ?? []).includes(sleutel);
+}
+
+/**
+ * Filters die niet (efficiënt) in Prisma kunnen: afgeleide provincie,
+ * deelmatch op "stad provincie", werkdagen uit het Json-rooster, urenoverlap
+ * en criteria-sleutels. Zelfde semantiek als de openbare-site-filterbalk.
+ */
+function matchtJsFilters(vacancy: VacancyMetContext, filters: PublicJobFilters): boolean {
+  if (filters.region) {
+    const regio = filters.region.trim().toLowerCase();
+    if (regionForCity(vacancy.location.city).toLowerCase() !== regio) return false;
+  }
+  if (filters.city) {
+    const zoek = filters.city.trim().toLowerCase();
+    const doel =
+      `${vacancy.location.city} ${regionForCity(vacancy.location.city)}`.toLowerCase();
+    if (!doel.includes(zoek)) return false;
+  }
+  if (filters.days && filters.days.length > 0) {
+    const rooster = castSchedule(vacancy.schedule);
+    const gevraagd = (dag: Weekday) =>
+      Object.values(rooster[dag]).some((eis) => eis !== null);
+    if (!filters.days.every(gevraagd)) return false;
+  }
+  // Urenrange: overlap tussen het gevraagde bereik en de vacature.
+  if (filters.hoursMin !== undefined && vacancy.hoursMax < filters.hoursMin) return false;
+  if (filters.hoursMax !== undefined && vacancy.hoursMin > filters.hoursMax) return false;
+  if (filters.equipment || filters.software || filters.specialization) {
+    const criteria = castCriteria(vacancy.criteria);
+    if (!criteriumBevat(criteria.equipment?.values, filters.equipment)) return false;
+    if (!criteriumBevat(criteria.software?.values, filters.software)) return false;
+    if (!criteriumBevat(criteria.specializations?.values, filters.specialization)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Alle gepubliceerde vacatures die aan de filters voldoen, gesorteerd op
+ * datePosted (nieuwste eerst). Bouwsteen voor listPublicJobs én de
+ * site-datalaag (site-queries.ts), die zelf pagineert/klemt.
+ */
+export async function zoekGepubliceerdeVacatures(
+  filters: PublicJobFilters = {},
+): Promise<VacancyMetContext[]> {
+  const vacatures = (await prisma.vacancy.findMany({
+    where: {
+      status: "published",
+      organization: {
+        status: "active",
+        ...(filters.organization ? { slug: filters.organization } : {}),
+      },
+      ...(filters.role ? { role: filters.role } : {}),
+      ...(filters.employmentType ? { contractTypes: { has: filters.employmentType } } : {}),
+      ...(filters.updatedSince ? { updatedAt: { gte: filters.updatedSince } } : {}),
+    },
+    include: VACANCY_INCLUDE,
+    orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+  })) as VacancyMetContext[];
+
+  return vacatures.filter((vacancy) => matchtJsFilters(vacancy, filters));
+}
+
 /**
  * Gepubliceerde vacatures, gefilterd, gesorteerd op datePosted (nieuwste
- * eerst) en gepagineerd. Regiofilter loopt over de afgeleide provincie.
+ * eerst) en gepagineerd. Een pagina buiten bereik geeft een lege items-lijst
+ * (bestaand API-gedrag; de site-datalaag klemt zelf op totalPages).
  */
 export async function listPublicJobs(
   filters: PublicJobFilters = {},
@@ -65,32 +154,20 @@ export async function listPublicJobs(
   const page = Math.max(1, filters.page ?? 1);
   const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, filters.pageSize ?? 20));
 
-  const vacatures = (await prisma.vacancy.findMany({
-    where: {
-      status: "published",
-      organization: { status: "active" },
-      ...(filters.role ? { role: filters.role } : {}),
-      ...(filters.employmentType ? { contractTypes: { has: filters.employmentType } } : {}),
-      ...(filters.city
-        ? { location: { city: { equals: filters.city, mode: "insensitive" } } }
-        : {}),
-      ...(filters.updatedSince ? { updatedAt: { gte: filters.updatedSince } } : {}),
-    },
-    include: VACANCY_INCLUDE,
-    orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
-  })) as VacancyMetContext[];
-
-  const regio = filters.region?.trim().toLowerCase();
-  const gefilterd = regio
-    ? vacatures.filter((v) => regionForCity(v.location.city).toLowerCase() === regio)
-    : vacatures;
+  const gefilterd = await zoekGepubliceerdeVacatures(filters);
 
   const paginaRijen = gefilterd.slice((page - 1) * pageSize, page * pageSize);
   const items = await Promise.all(
-    paginaRijen.map(async (vacancy) => toPublicJobSummary(vacancy, await metSlug(vacancy))),
+    paginaRijen.map(async (vacancy) => toPublicJobView(vacancy, await metSlug(vacancy))),
   );
 
-  return { items, total: gefilterd.length, page, pageSize };
+  return {
+    items,
+    total: gefilterd.length,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(gefilterd.length / pageSize)),
+  };
 }
 
 export type PublicJobLookup =
@@ -130,26 +207,52 @@ export async function getPublicJob(idOrSlug: string): Promise<PublicJobLookup> {
 // ---------------------------------------------------------------------------
 
 /**
- * Publieke praktijkweergave op organisatie-slug: naam, (hoofd)locatie-
- * kenmerken en het aantal gepubliceerde vacatures. null bij onbekend of
- * niet-actief.
+ * Bouwt de publieke praktijkweergave voor een organisatie waarvan al
+ * vaststaat dat ze actief is en publicatie-consent heeft. null zonder
+ * locaties (een praktijk zonder locatie is publiek niet representeerbaar).
  */
-export async function getPublicPractice(slug: string): Promise<PublicPracticeView | null> {
-  const organization = await prisma.organization.findUnique({ where: { slug } });
-  if (!organization || organization.status !== "active") return null;
-
+async function bouwPracticeView(
+  organization: NonNullable<Awaited<ReturnType<typeof prisma.organization.findUnique>>>,
+): Promise<PublicPracticeView | null> {
   // Hoofdlocatie = oudste locatie (de eerste die is aangemaakt).
-  const location = await prisma.practiceLocation.findFirst({
+  const locations = await prisma.practiceLocation.findMany({
     where: { organizationId: organization.id },
     orderBy: { createdAt: "asc" },
   });
-  if (!location) return null;
+  if (locations.length === 0) return null;
 
-  const openJobs = await prisma.vacancy.count({
+  const gepubliceerd = await prisma.vacancy.findMany({
     where: { organizationId: organization.id, status: "published" },
+    select: { mentorship: true, development: true },
   });
 
-  return toPublicPracticeView(organization, location, openJobs);
+  return toPublicPracticeView(organization, locations, gepubliceerd);
+}
+
+/**
+ * Publieke praktijkweergave op organisatie-slug. Alleen actieve organisaties
+ * mét publicatie-consent (Organization.publicConsent) bestaan publiek;
+ * anders null (endpoint: 404).
+ */
+export async function getPublicPractice(slug: string): Promise<PublicPracticeView | null> {
+  const organization = await prisma.organization.findUnique({ where: { slug } });
+  if (!organization || organization.status !== "active" || !organization.publicConsent) {
+    return null;
+  }
+  return bouwPracticeView(organization);
+}
+
+/**
+ * Alle publieke praktijken: actieve organisaties mét publicatie-consent en
+ * minstens één locatie, alfabetisch op naam.
+ */
+export async function listPublicPractices(): Promise<PublicPracticeView[]> {
+  const organisaties = await prisma.organization.findMany({
+    where: { status: "active", publicConsent: true },
+    orderBy: { name: "asc" },
+  });
+  const views = await Promise.all(organisaties.map(bouwPracticeView));
+  return views.filter((view): view is PublicPracticeView => view !== null);
 }
 
 // ---------------------------------------------------------------------------

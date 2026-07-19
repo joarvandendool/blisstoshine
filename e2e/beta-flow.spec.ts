@@ -19,6 +19,15 @@ const WACHTWOORD = "Testwachtwoord1";
 const PRAKTIJK_EMAIL = `beta-praktijk-${RUN}@voorbeeld.nl`;
 const PRAKTIJK_NAAM = `Beta Praktijk ${RUN}`;
 
+// Eigen gesimuleerd client-IP per run (x-forwarded-for): de registratie-
+// limiet is 5 per uur per IP en de hele suite deelt anders één IP — zie de
+// toelichting in kritieke-flow.spec.ts.
+test.use({
+  extraHTTPHeaders: {
+    "x-forwarded-for": `10.${Math.floor(RUN / 256) % 256}.${RUN % 256}.3`,
+  },
+});
+
 /** Klik met het element eerst gecentreerd (zie kritieke-flow.spec.ts). */
 async function klik(knop: Locator): Promise<void> {
   await knop.evaluate((el) =>
