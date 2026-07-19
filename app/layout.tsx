@@ -6,16 +6,21 @@ import "./globals.css";
 // Tijdelijke stand-ins voor de huisstijl-fonts:
 // Aktiv Grotesk → Archivo, Abril Display ExtraBold Italic → Playfair Display.
 // Drop-in te vervangen zodra de licentiebestanden beschikbaar zijn.
+// fase 13: display swap expliciet (geen onzichtbare tekst tijdens laden)
+// en alleen gewichten die daadwerkelijk gebruikt worden — serif-italic
+// bestaat in het product uitsluitend op gewicht 700 (accent-serif/font-bold).
 const sans = Archivo({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
+  display: "swap",
   variable: "--font-sans",
 });
 
 const serif = Playfair_Display({
   subsets: ["latin"],
   style: ["italic"],
-  weight: ["700", "800"],
+  weight: ["700"],
+  display: "swap",
   variable: "--font-serif",
 });
 

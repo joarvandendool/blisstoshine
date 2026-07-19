@@ -499,4 +499,50 @@ export const FIXTURE_JOBS: PublicJobView[] = [
     directApply: true,
     updatedAt: "2026-07-17T09:00:00.000Z",
   },
+  {
+    // Fase 12/13-testfixture: extreem lange Nederlandse titel + lange
+    // woorden. Bewust met oude datePosted zodat hij nooit op de homepage
+    // of pagina 1 van /vacatures staat; de e2e-suite gebruikt de
+    // detailpagina om tekstafbreking/overflow te bewaken.
+    slug: "waarnemend-tandarts-implantoloog-groningen-noorderlicht",
+    canonicalUrl: `${SITE}/vacatures/waarnemend-tandarts-implantoloog-groningen-noorderlicht`,
+    title:
+      "Waarnemend tandarts-implantoloog met differentiatie kaakgewrichtsproblematiek voor langdurige zwangerschapsvervanging (meerdere behandelkamers)",
+    role: tag("tandarts"),
+    organization: org({ practice: NOORD }),
+    location: NOORD.locations[0],
+    description:
+      "Voor een zwangerschapsvervanging van ten minste zeven maanden zoeken wij een waarnemend tandarts-implantoloog. Je neemt een volledig ingeplande agenda over, inclusief implantologieconsulten en de begeleiding van kaakgewrichtsklachtenpatiënten, met ondersteuning van een ervaren assistententeam.",
+    responsibilities: [
+      "Overnemen van een volledig ingeplande behandelagenda inclusief implantologieconsulten",
+      "Diagnostiek en behandeling van temporomandibulaire disfunctieklachten",
+      "Afstemmen van behandelplannen met de terugkerende collega",
+    ],
+    requirements: [
+      { label: "BIG-geregistreerd tandarts", level: "required" },
+      { label: "Aantoonbare implantologie-ervaring", level: "required" },
+      { label: "Ervaring met gnathologische behandeltrajecten", level: "preferred" },
+    ],
+    availability: [
+      { day: "ma", dayparts: ["ochtend", "middag"], level: "required" },
+      { day: "wo", dayparts: ["ochtend", "middag"], level: "required" },
+      { day: "vr", dayparts: ["ochtend", "middag"], level: "preferred" },
+    ],
+    hoursMin: 16,
+    hoursMax: 24,
+    employmentTypes: tags("zzp"),
+    salary: null,
+    revenueShare: { maxPercent: 48 },
+    equipment: NOORD.equipment,
+    software: NOORD.software,
+    specializations: tags("implantologie"),
+    culture: NOORD.culture,
+    mentorship: false,
+    development: [],
+    datePosted: "2026-06-01T09:00:00.000Z",
+    validThrough: "2026-08-01T09:00:00.000Z",
+    status: "published",
+    directApply: false,
+    updatedAt: "2026-07-18T09:00:00.000Z",
+  },
 ];

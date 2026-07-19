@@ -19,7 +19,12 @@ export function Breadcrumbs({ items }: { items: Kruimel[] }) {
         {items.map((item, i) => {
           const laatste = i === items.length - 1;
           return (
-            <li key={`${item.label}-${i}`} className="flex items-center gap-1.5">
+            <li
+              key={`${item.label}-${i}`}
+              // fase 12: max-w-full + anywhere — extreem lange titels (laatste
+              // kruimel) breken binnen de rij i.p.v. horizontaal te overflowen
+              className="flex min-w-0 max-w-full items-center gap-1.5 [overflow-wrap:anywhere]"
+            >
               {i > 0 ? (
                 <span aria-hidden="true" className="text-mw-text-muted">
                   ›

@@ -35,7 +35,7 @@ export function JobCard({
     >
       {/* 1. functie > 2. praktijk > 3. locatie */}
       <div className="flex flex-col gap-1">
-        <h3 className="text-mw-kop-3 font-semibold text-ink">
+        <h3 className="break-words text-mw-kop-3 font-semibold text-ink">
           <Link
             href={pad}
             className="rounded-md underline-offset-4 hover:underline"

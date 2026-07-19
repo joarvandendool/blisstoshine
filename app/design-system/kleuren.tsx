@@ -176,8 +176,15 @@ export function Kleuren() {
           className="flex flex-col items-center justify-center gap-1 rounded-kaart px-4 py-6 text-center"
           style={{ backgroundColor: "#ed6ca5" }}
         >
-          <span className="font-semibold text-white">Wit op roze</span>
-          <span className="rounded-full bg-white/85 px-2 py-0.5 text-[11px] font-semibold text-mw-error">
+          {/* fase 12: bewust fout specimen — visueel voorbeeld van de
+              verboden combinatie, daarom aria-hidden met sr-only-uitleg. */}
+          <span aria-hidden="true" className="font-semibold text-white">
+            Wit op roze
+          </span>
+          <span className="sr-only">
+            Specimen: witte tekst op roze — deze combinatie is verboden.
+          </span>
+          <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-mw-error">
             {formatteer(contrast(WIT, "#ed6ca5"))} — verboden
           </span>
         </div>

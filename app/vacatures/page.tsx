@@ -166,7 +166,7 @@ function FilterBalk({
             {taxonomie.days.map((dag) => {
               const actief = filters.days?.includes(dag.key as Weekday);
               return (
-                <label key={dag.key} className="relative">
+                <label key={dag.key} className="relative flex-1 sm:flex-none">
                   <input
                     type="checkbox"
                     name="dag"
@@ -174,9 +174,11 @@ function FilterBalk({
                     defaultChecked={actief}
                     className="peer sr-only"
                   />
+                  {/* fase 12: op mobiel vult elke dag de rij (target ≥ 44px
+                      breed); vanaf sm de compacte vaste breedte. */}
                   <span
                     className={cx(
-                      "flex h-11 w-9 cursor-pointer items-center justify-center rounded-(--radius-klein) border text-xs font-semibold",
+                      "flex h-11 w-full cursor-pointer items-center justify-center rounded-(--radius-klein) border text-xs font-semibold sm:w-9",
                       "transition-colors duration-(--motion-fast) motion-reduce:transition-none",
                       "border-mw-border-strong bg-white text-ink hover:border-blauw-400",
                       "peer-checked:border-blauw-700 peer-checked:bg-blauw-600 peer-checked:text-white",

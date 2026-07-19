@@ -215,12 +215,13 @@ export default async function VacatureDetail({ params }: PaginaProps) {
 
         {/* --------------------------- boven de vouw --------------------------- */}
         <header className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-12">
-          <div className="flex flex-col gap-6">
+          {/* fase 12: min-w-0 — lange woorden mogen de gridkolom niet oprekken */}
+          <div className="flex min-w-0 flex-col gap-6">
             <div className="flex flex-col gap-2">
               <p className="text-mw-micro font-semibold uppercase tracking-[0.14em] text-blauw-700">
                 {job.role.label}
               </p>
-              <h1 className="text-mw-kop-1 font-semibold tracking-tight text-ink">
+              <h1 className="break-words text-mw-kop-1 font-semibold tracking-tight text-ink">
                 {job.title}
               </h1>
               <p className="text-[16px] font-medium text-ink">
@@ -278,7 +279,7 @@ export default async function VacatureDetail({ params }: PaginaProps) {
             {!gesloten ? <CtaKnoppen job={job} /> : null}
           </div>
 
-          <div className="flex flex-col gap-5">
+          <div className="flex min-w-0 flex-col gap-5">
             <PracticeVisual
               seed={job.organization.slug}
               className="h-40 w-full sm:h-48"
@@ -298,7 +299,7 @@ export default async function VacatureDetail({ params }: PaginaProps) {
 
         {/* ------------------------------ secties ------------------------------ */}
         <div className="grid gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-12">
-          <div className="flex max-w-[65ch] flex-col gap-10">
+          <div className="flex min-w-0 max-w-[65ch] flex-col gap-10">
             <Sectie id="werkzaamheden" titel="Werkzaamheden">
               <VinkLijst items={job.responsibilities} />
             </Sectie>
@@ -360,7 +361,7 @@ export default async function VacatureDetail({ params }: PaginaProps) {
             ) : null}
           </div>
 
-          <div className="flex flex-col gap-10">
+          <div className="flex min-w-0 flex-col gap-10">
             <Sectie id="team-cultuur" titel="Team en cultuur">
               <div className="glass flex flex-col gap-4 rounded-kaart p-5">
                 <TagGroep titel="Zo werkt dit team" tags={job.culture} />

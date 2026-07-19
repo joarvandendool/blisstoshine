@@ -39,19 +39,20 @@ export default function DesignSystemPagina() {
     <div className="min-h-screen bg-mw-canvas text-mw-text">
       <header className="border-b border-mw-border bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-6 py-4">
-          <p className="text-lg font-semibold tracking-tight">
+          {/* fase 12: h1 (elke pagina precies één) */}
+          <h1 className="text-lg font-semibold tracking-tight">
             mondzorg
             <em className="accent-serif text-blauw-600">werkt</em>
             <span className="ml-3 text-sm font-medium text-mw-text-muted">
               designsysteem · intern · fase 3+4
             </span>
-          </p>
-          <nav aria-label="Secties" className="flex flex-wrap gap-x-4 gap-y-1">
+          </h1>
+          <nav aria-label="Secties" className="flex flex-wrap gap-x-2 gap-y-1">
             {SECTIES.map(([id, naam]) => (
               <a
                 key={id}
                 href={`#${id}`}
-                className="rounded-md py-2 text-sm font-medium text-mw-text-muted underline-offset-4 hover:text-blauw-700 hover:underline"
+                className="flex min-h-11 items-center rounded-md px-2 text-sm font-medium text-mw-text-muted underline-offset-4 hover:text-blauw-700 hover:underline"
               >
                 {naam}
               </a>

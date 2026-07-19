@@ -15,6 +15,7 @@ export function PublicMobileMenu({ items }: { items: PublicNavItem[] }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const wrapRef = useRef<HTMLDivElement>(null);
+  const knopRef = useRef<HTMLButtonElement>(null);
   const pathname = usePathname();
 
   // Sluit bij navigatie en bij klikken buiten het paneel.
@@ -30,7 +31,12 @@ export function PublicMobileMenu({ items }: { items: PublicNavItem[] }) {
       }
     }
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        setOpen(false);
+        // fase 12: focus terug naar de menuknop, anders valt de focus
+        // in het niets zodra het paneel verdwijnt (toetsenbordbediening).
+        knopRef.current?.focus();
+      }
     }
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
@@ -43,6 +49,7 @@ export function PublicMobileMenu({ items }: { items: PublicNavItem[] }) {
   return (
     <div ref={wrapRef} className="relative md:hidden">
       <button
+        ref={knopRef}
         type="button"
         aria-expanded={open}
         aria-controls={panelId}

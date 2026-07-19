@@ -96,12 +96,13 @@ export default async function PraktijkPagina({ params }: PaginaProps) {
 
         {/* ------------------------------- kop ------------------------------- */}
         <header className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-12">
-          <div className="flex flex-col gap-5">
+          {/* fase 12: min-w-0 — lange namen mogen de gridkolom niet oprekken */}
+          <div className="flex min-w-0 flex-col gap-5">
             <div className="flex flex-col gap-2">
               <p className="text-mw-micro font-semibold uppercase tracking-[0.14em] text-blauw-700">
                 Praktijk
               </p>
-              <h1 className="text-mw-kop-1 font-semibold tracking-tight text-ink">
+              <h1 className="break-words text-mw-kop-1 font-semibold tracking-tight text-ink">
                 {praktijk.name}
               </h1>
               <p className="text-[16px] text-mw-text-muted">
