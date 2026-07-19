@@ -87,6 +87,19 @@ export const EMPLOYMENT_WEIGHTS = {
 } as const;
 
 /**
+ * Registraties die definitorisch aan de functie vastzitten en die het
+ * kandidaatprofiel dus betrouwbaar draagt — alleen déze mogen een match hard
+ * uitsluiten (v1.1.0). Overige gevraagde registraties (bv. KRT, KRM,
+ * röntgenbevoegdheid) legt het profiel niet betrouwbaar vast; een verplichte
+ * registratie buiten deze set zou anders de héle kandidatenpool uitsluiten en
+ * geldt daarom als zacht signaal (aandachtspunt), niet als harde mismatch.
+ */
+export const HARD_REGISTRATIONS: readonly string[] = [
+  "big_tandarts",
+  "big_mondhygienist",
+];
+
+/**
  * Volledig configuratieobject van deze algoritmeversie — geversioneerd op te
  * slaan in de database zodat oude snapshots verklaarbaar blijven.
  */
@@ -100,6 +113,7 @@ export const MATCHING_CONFIG = {
   developmentMatchValues: DEVELOPMENT_MATCH_VALUES,
   travelModel: TRAVEL_MODEL,
   employmentWeights: EMPLOYMENT_WEIGHTS,
+  hardRegistrations: HARD_REGISTRATIONS,
 } as const;
 
 export type MatchingConfig = typeof MATCHING_CONFIG;

@@ -285,7 +285,30 @@ describe("matching-engine — reistijd", () => {
 });
 
 describe("matching-engine — harde mismatches", () => {
-  it("markeert een ontbrekende verplichte registratie als ineligible", () => {
+  it("markeert een ontbrekende verplichte BIG-registratie als ineligible", () => {
+    // Alleen functie-gebonden BIG-registraties sluiten hard uit (v1.1.0).
+    const vacature = maakVacature({
+      criteria: {
+        registrations: { values: ["big_mondhygienist"], level: "required" },
+      },
+    });
+    const kandidaat = maakKandidaat({ registrations: [] });
+
+    const resultaat = computeMatch(kandidaat, vacature);
+
+    expect(resultaat.eligible).toBe(false);
+    expect(resultaat.label).toBe("ineligible");
+    expect(resultaat.score).toBe(0);
+    expect(
+      resultaat.hardMismatchReasons.some((r) =>
+        r.message.includes("BIG-registratie mondhygiënist"),
+      ),
+    ).toBe(true);
+  });
+
+  it("sluit NIET hard uit op een niet-vastgelegde registratie (KRM/KRT/röntgen) maar geeft een aandachtspunt", () => {
+    // KRM legt het kandidaatprofiel niet vast; een verplichte KRM zou anders
+    // de héle pool uitsluiten. Nu: eligible, met zacht aandachtspunt.
     const vacature = maakVacature({
       criteria: {
         registrations: { values: ["big_mondhygienist", "krm"], level: "required" },
@@ -295,11 +318,12 @@ describe("matching-engine — harde mismatches", () => {
 
     const resultaat = computeMatch(kandidaat, vacature);
 
-    expect(resultaat.eligible).toBe(false);
-    expect(resultaat.label).toBe("ineligible");
-    expect(resultaat.score).toBe(0);
+    expect(resultaat.eligible).toBe(true);
     expect(
-      resultaat.hardMismatchReasons.some((r) => r.message.includes("KRM-registratie")),
+      resultaat.hardMismatchReasons.some((r) => r.message.includes("KRM")),
+    ).toBe(false);
+    expect(
+      resultaat.attentionPoints.some((r) => r.code === "registratie_niet_in_profiel"),
     ).toBe(true);
   });
 

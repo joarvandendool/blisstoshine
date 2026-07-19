@@ -22,6 +22,7 @@ import {
   CRITERION_LEVEL_WEIGHTS,
   DEVELOPMENT_MATCH_VALUES,
   EMPLOYMENT_WEIGHTS,
+  HARD_REGISTRATIONS,
   LABEL_THRESHOLDS,
   NEUTRAL_SCORE,
   TRAVEL_MODEL,
@@ -580,12 +581,18 @@ function verzamelHardeMismatches(
     });
   }
 
-  // 2. Ontbrekende verplichte registratie/bevoegdheid
+  // 2. Ontbrekende verplichte registratie/bevoegdheid — alleen hard voor de
+  //    registraties die het profiel betrouwbaar draagt (HARD_REGISTRATIONS,
+  //    de functie-gebonden BIG-registraties). Overige gevraagde registraties
+  //    (KRT/KRM/röntgen) legt het profiel niet vast en gelden als zacht
+  //    signaal (zie computeMatch) i.p.v. een pool-brede uitsluiting.
   const registraties = vacancy.criteria?.registrations;
   if (registraties && registraties.level === "required") {
     const kandidaatRegistraties = veiligeLijst(candidate.registrations);
     const ontbrekend = veiligeLijst(registraties.values).filter(
-      (waarde) => !kandidaatRegistraties.includes(waarde),
+      (waarde) =>
+        HARD_REGISTRATIONS.includes(waarde) &&
+        !kandidaatRegistraties.includes(waarde),
     );
     if (ontbrekend.length > 0) {
       redenen.push({
@@ -760,6 +767,29 @@ export function computeMatch(candidate: MatchCandidate, vacancy: MatchVacancy): 
           dienstverband.beloning.vorm === "zzp"
             ? "Het geboden omzetpercentage sluit aan bij de wens van de kandidaat."
             : "Het geboden salaris sluit aan bij de wens van de kandidaat.",
+      });
+    }
+  }
+
+  // Gevraagde registraties die het profiel niet betrouwbaar vastlegt
+  // (bv. KRT/KRM/röntgen): zacht aandachtspunt i.p.v. een harde uitsluiting,
+  // zodat een courante eis niet de héle kandidatenpool wegfiltert (v1.1.0).
+  const gevraagdeRegistraties = vacancy.criteria?.registrations;
+  if (gevraagdeRegistraties && gevraagdeRegistraties.level === "required") {
+    const kandidaatRegistraties = veiligeLijst(candidate.registrations);
+    const nietVastgelegd = veiligeLijst(gevraagdeRegistraties.values).filter(
+      (waarde) =>
+        !HARD_REGISTRATIONS.includes(waarde) &&
+        !kandidaatRegistraties.includes(waarde),
+    );
+    if (nietVastgelegd.length > 0) {
+      attentionPoints.push({
+        code: "registratie_niet_in_profiel",
+        category: "roleAndExperience",
+        message:
+          nietVastgelegd.length === 1
+            ? `De praktijk vraagt ${label(nietVastgelegd[0])} — het kandidaatprofiel legt dit niet vast; bevestig dit met de kandidaat.`
+            : `De praktijk vraagt ${lijstTekst(nietVastgelegd.map((w) => label(w)))} — het kandidaatprofiel legt deze niet vast; bevestig dit met de kandidaat.`,
       });
     }
   }

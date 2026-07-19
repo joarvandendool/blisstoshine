@@ -16,6 +16,13 @@ elke beslissing is achteraf herleidbaar tot algoritmeversie + invoer.
 > `beloning_sluit_aan`. Ontbrekende beloningsgegevens vallen neutraal uit
 > (score 60) en drukken de match niet omlaag. Grondslag: de bestaande
 > feedback-redencode `salaris_tarief` en de zzp-omzetpercentage-productregel.
+>
+> **Verplichte registraties (1.1.0):** alleen functie-gebonden BIG-registraties
+> (`HARD_REGISTRATIONS`: `big_tandarts`, `big_mondhygienist`) sluiten hard uit.
+> Overige gevraagde registraties (KRT/KRM/röntgenbevoegdheid) legt het
+> kandidaatprofiel niet betrouwbaar vast; een verplichte registratie daarbuiten
+> zou anders de héle kandidatenpool uitsluiten. Die gelden nu als zacht
+> aandachtspunt (`registratie_niet_in_profiel`) i.p.v. een harde mismatch.
 
 Engine: `src/domain/matching/engine.ts` (pure domeinmodule, geen DB/React,
 geen `Date.now()`/`Math.random()` — determinisme getest in
@@ -42,8 +49,8 @@ profielen.
 `verzamelHardeMismatches()` (`src/domain/matching/engine.ts:509`):
 
 1. verkeerde functie (`functie_ongelijk`);
-2. ontbrekende verplichte registratie/bevoegdheid
-   (`verplichte_registratie_ontbreekt`);
+2. ontbrekende verplichte BIG-registratie/bevoegdheid
+   (`verplichte_registratie_ontbreekt`; alleen `HARD_REGISTRATIONS` — zie 1.1.0);
 3. geen overlap met een verplicht dagdeel
    (`verplicht_dagdeel_geen_overlap`);
 4. geen gemeenschappelijke contractvorm
