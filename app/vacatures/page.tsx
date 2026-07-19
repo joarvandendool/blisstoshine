@@ -22,12 +22,43 @@ import {
   parseJobSearchParams,
   type ZoekParams,
 } from "@/public-site/format";
+import { paginaMetadata } from "@/public-site/seo";
 
-export const metadata: Metadata = {
-  title: "Vacatures in de mondzorg — mondzorgwerkt",
-  description:
-    "Openbare vacatures voor tandartsen, mondhygiënisten, assistenten en praktijkmanagers — met werkdagen, uren en vergoeding meteen zichtbaar.",
-};
+/** Aantal actieve filtervelden (dagen tellen als één filter). */
+function telActieveFilters(filters: PublicJobFilters): number {
+  return [
+    filters.role,
+    filters.city,
+    filters.days && filters.days.length > 0 ? "dagen" : undefined,
+    filters.hoursMin,
+    filters.hoursMax,
+    filters.employmentType,
+    filters.equipment,
+    filters.software,
+    filters.specialization,
+  ].filter((v) => v !== undefined).length;
+}
+
+/**
+ * Fase 9: canonical wijst altijd naar de filterloze pagina-1-variant
+ * (/vacatures); gefilterde en gepagineerde URL's canonicaliseren daarheen.
+ * URL's met méér dan één actief filter (dunne combinaties) krijgen
+ * bovendien robots-noindex.
+ */
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<ZoekParams>;
+}): Promise<Metadata> {
+  const { filters } = parseJobSearchParams(await searchParams);
+  return paginaMetadata({
+    titel: "Vacatures in de mondzorg — mondzorgwerkt",
+    beschrijving:
+      "Openbare vacatures voor tandartsen, mondhygiënisten, assistenten en praktijkmanagers — met werkdagen, uren en vergoeding meteen zichtbaar.",
+    pad: "/vacatures",
+    noindex: telActieveFilters(filters) > 1,
+  });
+}
 
 /* ------------------------------ filterbalk ------------------------------ */
 

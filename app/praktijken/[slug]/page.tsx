@@ -10,11 +10,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui";
+import { Breadcrumbs } from "@/public-site/Breadcrumbs";
 import { JobCard } from "@/public-site/JobCard";
+import { JsonLd } from "@/public-site/JsonLd";
 import { PracticeVisual } from "@/public-site/PracticeVisual";
 import { PublicShell } from "@/public-site/PublicShell";
+import { TrackedLink } from "@/public-site/TrackedLink";
 import { getPublicDataSource } from "@/public-site/data/adapter";
 import type { PublicTag } from "@/public-site/data/types";
+import { paginaMetadata, placeJsonLd } from "@/public-site/seo";
 
 interface PaginaProps {
   params: Promise<{ slug: string }>;
@@ -26,10 +30,11 @@ export async function generateMetadata({
   const { slug } = await params;
   const praktijk = await getPublicDataSource().getPractice(slug);
   if (!praktijk) return { title: "Praktijk niet gevonden — mondzorgwerkt" };
-  return {
-    title: `${praktijk.name} — ${praktijk.locations[0]?.city ?? ""} | mondzorgwerkt`,
-    description: praktijk.description.slice(0, 160),
-  };
+  return paginaMetadata({
+    titel: `${praktijk.name} — ${praktijk.locations[0]?.city ?? ""} | mondzorgwerkt`,
+    beschrijving: praktijk.description.slice(0, 160),
+    pad: `/praktijken/${praktijk.slug}`,
+  });
 }
 
 function KenmerkSectie({
@@ -77,15 +82,17 @@ export default async function PraktijkPagina({ params }: PaginaProps) {
 
   return (
     <PublicShell>
+      {/* fase 9: Place-JSON-LD op praktijkpagina's (stad + postcode-4) */}
+      <JsonLd data={placeJsonLd(praktijk)} />
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 px-4 py-10 sm:px-6 lg:py-14">
-        <nav aria-label="Kruimelpad">
-          <Link
-            href="/vacatures"
-            className="inline-flex min-h-11 items-center gap-1.5 rounded-md text-[15px] font-semibold text-blauw-700 underline-offset-4 hover:underline"
-          >
-            <span aria-hidden="true">←</span> Alle vacatures
-          </Link>
-        </nav>
+        {/* kruimelpad (zichtbaar + BreadcrumbList-JSON-LD) */}
+        <Breadcrumbs
+          items={[
+            { label: "Home", href: "/" },
+            { label: "Praktijken" },
+            { label: praktijk.name, href: `/praktijken/${praktijk.slug}` },
+          ]}
+        />
 
         {/* ------------------------------- kop ------------------------------- */}
         <header className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-12">
@@ -225,12 +232,14 @@ export default async function PraktijkPagina({ params }: PaginaProps) {
                 Deze praktijk heeft op dit moment geen openstaande vacatures.
                 Maak een profiel en word gevonden zodra hier iets vrijkomt.
               </p>
-              <Link
+              <TrackedLink
+                event="public_register_clicked"
+                context={{ route_type: "praktijk" }}
                 href="/registreren"
                 className="flex min-h-11 items-center rounded-full border border-mw-border-strong bg-white px-5 text-sm font-semibold text-ink hover:border-blauw-400"
               >
                 Maak een profiel
-              </Link>
+              </TrackedLink>
             </div>
           )}
         </section>

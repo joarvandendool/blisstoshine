@@ -3,11 +3,19 @@
 // /inloggen; wél ingelogd maar geen platformbeheerder → nette 403-melding,
 // zodat duidelijk is waarom de pagina niet zichtbaar is.
 
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { AuthzError, requirePlatformAdmin } from "@/lib/authz";
 import { AppShell, type AppShellNavItem } from "@/components/AppShell";
+
+// Fase 10 (AI-discoverability): privéroute — nooit indexeren. robots.txt
+// sluit /intern ook uit, maar robots.txt is geen beveiliging; de echte
+// bescherming is de autorisatie hieronder + deze noindex-meta.
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 const INTERN_NAV: AppShellNavItem[] = [{ href: "/intern", label: "Overzicht" }];
 

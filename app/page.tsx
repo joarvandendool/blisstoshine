@@ -12,14 +12,18 @@ import { WeekGrid } from "@/components/WeekGrid";
 import { cx } from "@/components/ui";
 import { emptyAvailability } from "@/domain/taxonomy";
 import { JobCard } from "@/public-site/JobCard";
+import { JsonLd } from "@/public-site/JsonLd";
 import { PublicShell } from "@/public-site/PublicShell";
+import { TrackedLink } from "@/public-site/TrackedLink";
 import { getPublicDataSource } from "@/public-site/data/adapter";
+import { organizationJsonLd, paginaMetadata } from "@/public-site/seo";
 
-export const metadata: Metadata = {
-  title: "mondzorgwerkt — werk dat bij je week past",
-  description:
+export const metadata: Metadata = paginaMetadata({
+  titel: "mondzorgwerkt — werk dat bij je week past",
+  beschrijving:
     "Mondzorgwerkt matcht professionals en praktijken op dagen, vakinhoud, technologie en ambities. Stel je werkweek samen en ontdek waarom een praktijk past.",
-};
+  pad: "/",
+});
 
 /* ------------------------- demonstratiedata stap 1 ------------------------ */
 /* Een kleine, echte WeekGrid-compositie (readonly) die laat zien hoe een
@@ -81,6 +85,8 @@ export default async function Home() {
 
   return (
     <PublicShell>
+      {/* fase 9: Organization-JSON-LD op de homepage */}
+      <JsonLd data={organizationJsonLd()} />
       {/* ------------------------------ hero ------------------------------ */}
       <section className="mx-auto grid w-full max-w-6xl items-center gap-10 px-4 pb-16 pt-12 sm:px-6 sm:pt-16 lg:grid-cols-[1.05fr_0.95fr] lg:gap-6 lg:pb-24 lg:pt-24">
         <div className="flex max-w-xl flex-col gap-6">
@@ -93,18 +99,23 @@ export default async function Home() {
             vakinhoud, technologie en ambities.
           </p>
           <div className="flex flex-wrap items-center gap-3">
-            <Link
+            {/* fase 11: registratieclicks met bron-context voor de funnel */}
+            <TrackedLink
+              event="public_register_clicked"
+              context={{ route_type: "home" }}
               href="/registreren"
               className="inline-flex min-h-12 items-center rounded-full bg-blauw-600 px-7 text-base font-semibold text-white shadow-(--shadow-knop-blauw) transition-colors duration-(--motion-instant) hover:bg-blauw-700 motion-reduce:transition-none"
             >
               Ontdek mijn matches
-            </Link>
-            <Link
+            </TrackedLink>
+            <TrackedLink
+              event="public_register_clicked"
+              context={{ route_type: "home" }}
               href="/registreren?type=praktijk"
               className="inline-flex min-h-12 items-center rounded-full border border-mw-border-strong bg-white px-7 text-base font-semibold text-ink transition-colors duration-(--motion-instant) hover:border-blauw-400 motion-reduce:transition-none"
             >
               Vind passende professionals
-            </Link>
+            </TrackedLink>
           </div>
         </div>
 

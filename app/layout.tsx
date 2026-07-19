@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Archivo, Playfair_Display } from "next/font/google";
+import { siteUrl } from "@/public-site/seo";
 import "./globals.css";
 
 // Tijdelijke stand-ins voor de huisstijl-fonts:
@@ -19,6 +20,9 @@ const serif = Playfair_Display({
 });
 
 export const metadata: Metadata = {
+  // Fase 9: absolute basis voor canonical/OG-URL's, env-gestuurd zodat
+  // previews en productie elk hun eigen domein canonicaliseren.
+  metadataBase: new URL(siteUrl()),
   title: "mondzorgwerkt — werk dat past, in de mondzorg",
   description:
     "Hét match- en capaciteitsplatform voor de mondzorg. Stel je ideale werkweek samen en ontdek praktijken die echt bij je passen.",

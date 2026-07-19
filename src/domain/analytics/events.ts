@@ -66,17 +66,34 @@ export const ENGAGEMENT_EVENTS = [
   "capacity_gap_to_vacancy",
 ] as const;
 
+/**
+ * Openbare site (Workstream B, fase 11): anonieme discovery-events van
+ * bezoekers zónder account. Privacyregels bovenop de envelope:
+ * geen userId, geen vrije identifiers (dus geen slugs of zoektermen),
+ * alleen geclassificeerde bron (google|chatgpt|claude|perplexity|
+ * answer_engine_overig|social|direct) en categorische context
+ * (route-type, taxonomierol, regio).
+ */
+export const PUBLIC_EVENTS = [
+  "public_page_viewed",
+  "public_job_viewed",
+  "public_apply_clicked",
+  "public_register_clicked",
+] as const;
+
 export type CandidateFunnelEvent = (typeof CANDIDATE_FUNNEL_EVENTS)[number];
 export type PracticeFunnelEvent = (typeof PRACTICE_FUNNEL_EVENTS)[number];
 export type CommercialEvent = (typeof COMMERCIAL_EVENTS)[number];
 export type EngagementEvent = (typeof ENGAGEMENT_EVENTS)[number];
+export type PublicEvent = (typeof PUBLIC_EVENTS)[number];
 
 /** Alle geldige eventnamen (union van de funnels en de commerciële lus). */
 export type AnalyticsEventName =
   | CandidateFunnelEvent
   | PracticeFunnelEvent
   | CommercialEvent
-  | EngagementEvent;
+  | EngagementEvent
+  | PublicEvent;
 
 /**
  * Alle eventnamen, gededupliceerd (interview_scheduled komt in beide funnels
@@ -89,6 +106,7 @@ export const ANALYTICS_EVENTS: readonly AnalyticsEventName[] = Object.freeze(
       ...PRACTICE_FUNNEL_EVENTS,
       ...COMMERCIAL_EVENTS,
       ...ENGAGEMENT_EVENTS,
+      ...PUBLIC_EVENTS,
     ]),
   ),
 );

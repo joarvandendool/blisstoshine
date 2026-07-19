@@ -11,9 +11,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { WeekGrid } from "@/components/WeekGrid";
 import { Badge, cx } from "@/components/ui";
+import { Breadcrumbs } from "@/public-site/Breadcrumbs";
 import { JobCard } from "@/public-site/JobCard";
+import { JsonLd } from "@/public-site/JsonLd";
 import { PracticeVisual } from "@/public-site/PracticeVisual";
 import { PublicShell } from "@/public-site/PublicShell";
+import { TrackedLink } from "@/public-site/TrackedLink";
 import { getPublicDataSource } from "@/public-site/data/adapter";
 import type { PublicJobView, PublicTag } from "@/public-site/data/types";
 import {
@@ -23,6 +26,7 @@ import {
   urenRange,
   vergoeding,
 } from "@/public-site/format";
+import { jobPostingJsonLd, paginaMetadata } from "@/public-site/seo";
 
 interface PaginaProps {
   params: Promise<{ slug: string }>;
@@ -34,10 +38,13 @@ export async function generateMetadata({
   const { slug } = await params;
   const job = await getPublicDataSource().getJob(slug);
   if (!job) return { title: "Vacature niet gevonden — mondzorgwerkt" };
-  return {
-    title: `${job.title} — ${job.organization.name} | mondzorgwerkt`,
-    description: `${job.role.label} in ${job.location.city} (${urenRange(job)}). ${job.description.slice(0, 140)}`,
-  };
+  // Ook een gesloten vacature blijft indexeerbaar (met zichtbare status,
+  // zonder JobPosting-markup en zonder sollicitatiemogelijkheid).
+  return paginaMetadata({
+    titel: `${job.title} — ${job.organization.name} | mondzorgwerkt`,
+    beschrijving: `${job.role.label} in ${job.location.city} (${urenRange(job)}). ${job.description.slice(0, 140)}`,
+    pad: `/vacatures/${job.slug}`,
+  });
 }
 
 /* ------------------------------- bouwstenen ------------------------------- */
@@ -108,21 +115,27 @@ function VinkLijst({ items }: { items: string[] }) {
 
 function CtaKnoppen({ job }: { job: PublicJobView }) {
   const pad = `/vacatures/${job.slug}`;
+  // fase 11: slug-loze eventcontext (alleen taxonomierol + regio).
+  const context = { rol: job.role.key, regio: job.location.region };
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <Link
+      <TrackedLink
+        event="public_register_clicked"
+        context={context}
         href={registrerenMetNext(pad)}
         className="inline-flex min-h-12 items-center rounded-full bg-blauw-600 px-7 text-base font-semibold text-white shadow-(--shadow-knop-blauw) transition-colors duration-(--motion-instant) hover:bg-blauw-700 motion-reduce:transition-none"
       >
         Bekijk mijn match
-      </Link>
+      </TrackedLink>
       {job.directApply ? (
-        <Link
+        <TrackedLink
+          event="public_apply_clicked"
+          context={context}
           href={registrerenMetNext(pad)}
           className="inline-flex min-h-12 items-center rounded-full border border-mw-border-strong bg-white px-7 text-base font-semibold text-ink transition-colors duration-(--motion-instant) hover:border-blauw-400 motion-reduce:transition-none"
         >
           Solliciteer direct
-        </Link>
+        </TrackedLink>
       ) : null}
     </div>
   );
@@ -165,17 +178,24 @@ export default async function VacatureDetail({ params }: PaginaProps) {
   const bespreekbaar = job.requirements.filter((r) => r.level === "preferred");
 
   return (
-    <PublicShell>
+    <PublicShell
+      jobAnalyticsContext={{ rol: job.role.key, regio: job.location.region }}
+    >
+      {/* fase 9: JobPosting-JSON-LD UITSLUITEND bij status published,
+          exact overeenkomend met de zichtbare inhoud. Gesloten vacatures
+          blijven indexeerbaar maar krijgen géén JobPosting-markup. */}
+      {!gesloten ? (
+        <JsonLd data={jobPostingJsonLd(job, praktijk !== null)} />
+      ) : null}
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 px-4 py-10 sm:px-6 lg:py-14">
-        {/* terug-link met volwaardig tap-target (audit-P2 #7) */}
-        <nav aria-label="Kruimelpad">
-          <Link
-            href="/vacatures"
-            className="inline-flex min-h-11 items-center gap-1.5 rounded-md text-[15px] font-semibold text-blauw-700 underline-offset-4 hover:underline"
-          >
-            <span aria-hidden="true">←</span> Alle vacatures
-          </Link>
-        </nav>
+        {/* kruimelpad (zichtbaar + BreadcrumbList-JSON-LD) */}
+        <Breadcrumbs
+          items={[
+            { label: "Home", href: "/" },
+            { label: "Vacatures", href: "/vacatures" },
+            { label: job.title, href: `/vacatures/${job.slug}` },
+          ]}
+        />
 
         {gesloten ? (
           <div
@@ -397,19 +417,23 @@ export default async function VacatureDetail({ params }: PaginaProps) {
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
-                <Link
+                <TrackedLink
+                  event="public_register_clicked"
+                  context={{ rol: job.role.key, regio: job.location.region }}
                   href={registrerenMetNext(`/vacatures/${job.slug}`)}
                   className="inline-flex min-h-12 items-center rounded-full bg-white px-7 text-base font-semibold text-blauw-700 transition-colors duration-(--motion-instant) hover:bg-brand-light motion-reduce:transition-none"
                 >
                   Bekijk mijn match
-                </Link>
+                </TrackedLink>
                 {job.directApply ? (
-                  <Link
+                  <TrackedLink
+                    event="public_apply_clicked"
+                    context={{ rol: job.role.key, regio: job.location.region }}
                     href={registrerenMetNext(`/vacatures/${job.slug}`)}
                     className="inline-flex min-h-12 items-center rounded-full border border-white/40 px-7 text-base font-semibold text-white transition-colors duration-(--motion-instant) hover:bg-white/10 motion-reduce:transition-none"
                   >
                     Solliciteer direct
-                  </Link>
+                  </TrackedLink>
                 ) : null}
               </div>
             </div>

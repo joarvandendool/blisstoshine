@@ -9,6 +9,11 @@
 import Link from "next/link";
 import { cx } from "@/components/ui";
 import { PublicMobileMenu } from "./PublicNav";
+import {
+  PublicAnalytics,
+  type PublicJobAnalyticsContext,
+} from "./PublicAnalytics";
+import { KENNIS_ARTIKELEN } from "./kennis/artikelen";
 import { PUBLIC_NAV_ITEMS } from "./nav-items";
 
 /** Wordmark-placeholder (sans + italic serif) tot de echte vector er is. */
@@ -40,9 +45,21 @@ export function Wordmark({
   );
 }
 
-export function PublicShell({ children }: { children: React.ReactNode }) {
+export function PublicShell({
+  children,
+  jobAnalyticsContext,
+}: {
+  children: React.ReactNode;
+  /**
+   * Alleen voor vacaturedetailpagina's: slug-loze context (taxonomierol +
+   * regio) zodat het analytics-eiland public_job_viewed kan melden (fase 11).
+   */
+  jobAnalyticsContext?: PublicJobAnalyticsContext;
+}) {
   return (
     <div className="flex min-h-dvh flex-col bg-surface text-ink">
+      {/* fase 11: meldt public_page_viewed éénmalig per pagina (anoniem). */}
+      <PublicAnalytics jobContext={jobAnalyticsContext} />
       <a
         href="#inhoud"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-(--z-toast) focus:rounded-full focus:bg-blauw-600 focus:px-5 focus:py-3 focus:text-sm focus:font-semibold focus:text-white"
@@ -100,20 +117,40 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
                 vakinhoud, technologie en ambities — uitgelegd per match.
               </p>
             </div>
-            <nav aria-label="Footernavigatie">
-              <ul className="flex flex-col gap-1 sm:items-end">
-                {PUBLIC_NAV_ITEMS.map((item) => (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      className="flex min-h-11 items-center rounded-lg text-[15px] font-medium text-blauw-100 underline-offset-4 hover:text-white hover:underline"
-                    >
-                      {item.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </nav>
+            <div className="flex flex-col gap-8 sm:flex-row sm:gap-14">
+              {/* fase 8: interne links naar de kennisbank op elke publieke pagina */}
+              <nav aria-label="Kennisbank">
+                <p className="mb-1 flex min-h-6 items-center text-mw-klein font-semibold uppercase tracking-[0.12em] text-blauw-200">
+                  Kennisbank
+                </p>
+                <ul className="flex flex-col gap-1">
+                  {KENNIS_ARTIKELEN.map((artikel) => (
+                    <li key={artikel.pad}>
+                      <Link
+                        href={artikel.pad}
+                        className="flex min-h-11 items-center rounded-lg text-[15px] font-medium text-blauw-100 underline-offset-4 hover:text-white hover:underline"
+                      >
+                        {artikel.kortLabel}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+              <nav aria-label="Footernavigatie">
+                <ul className="flex flex-col gap-1">
+                  {PUBLIC_NAV_ITEMS.map((item) => (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        className="flex min-h-11 items-center rounded-lg text-[15px] font-medium text-blauw-100 underline-offset-4 hover:text-white hover:underline"
+                      >
+                        {item.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+            </div>
           </div>
           <p className="border-t border-white/15 pt-6 text-sm text-blauw-200">
             © 2026 mondzorgwerkt
