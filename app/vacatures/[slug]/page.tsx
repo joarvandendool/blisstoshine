@@ -28,6 +28,20 @@ import {
 } from "@/public-site/format";
 import { jobPostingJsonLd, paginaMetadata } from "@/public-site/seo";
 
+// PERF: on-demand ISR. Zonder deze exports rendert Next elke aanvraag
+// opnieuw op de server; de onderliggende publieke data mag per contract al
+// 300 s oud zijn (zie HttpDataSource, revalidate 300), dus een even lange
+// paginacache verandert niets aan de versheidsgarantie maar haalt de
+// render (en bij de http-bron ook het API/DB-pad) van het kritieke pad.
+// generateStaticParams is bewust leeg: er wordt niets tijdens de build
+// gerenderd (de databron draait dan nog niet); elke slug wordt bij de
+// eerste aanvraag gerenderd en daarna 300 s uit de cache bediend.
+export const revalidate = 300;
+
+export function generateStaticParams(): { slug: string }[] {
+  return [];
+}
+
 interface PaginaProps {
   params: Promise<{ slug: string }>;
 }

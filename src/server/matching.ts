@@ -6,6 +6,7 @@
 // visibility != hidden. Bij visibility "anonymous" wordt de naam vervangen
 // door een geanonimiseerde omschrijving ("Mondhygiënist uit Utrecht").
 
+import { cache } from "react";
 import type {
   CandidateProfile,
   PracticeLocation,
@@ -38,13 +39,18 @@ import { planCodeVoorAnalytics } from "@/server/organizations";
 
 type ProfielMetNaam = CandidateProfile & { user: { name: string } };
 
-/** Actieve, vindbare kandidaten (status active, visibility != hidden). */
-async function vindbareKandidaten(): Promise<ProfielMetNaam[]> {
+/**
+ * Actieve, vindbare kandidaten (status active, visibility != hidden).
+ * PERF: React cache() — het dashboard en de Match Studio halen deze pool
+ * per vacature op; binnen één serverrequest volstaat één volledige scan.
+ * Leesbewerking zonder mutatiepad binnen dezelfde request, dus veilig.
+ */
+const vindbareKandidaten = cache(async (): Promise<ProfielMetNaam[]> => {
   return prisma.candidateProfile.findMany({
     where: { status: "active", visibility: { not: "hidden" } },
     include: { user: { select: { name: true } } },
   });
-}
+});
 
 /**
  * Weergavenaam volgens de privacy-instelling van de kandidaat:
@@ -67,17 +73,21 @@ function weergaveNaam(profiel: ProfielMetNaam, metConsent = false): string {
  * en "candidateUserId:vacancyId" (per vacature). dektConsent beantwoordt of
  * een kandidaat voor déze vacature zijn naam heeft vrijgegeven.
  */
-async function consentSetVoorOrg(organizationId: string): Promise<ReadonlySet<string>> {
-  const consents = await prisma.candidateConsent.findMany({
-    where: { organizationId, scope: "contact_details", revokedAt: null },
-    select: { candidateUserId: true, vacancyId: true },
-  });
-  return new Set(
-    consents.map((c) =>
-      c.vacancyId === null ? c.candidateUserId : `${c.candidateUserId}:${c.vacancyId}`,
-    ),
-  );
-}
+// PERF: React cache() — één consent-scan per organisatie per serverrequest
+// (het dashboard vraagt dit per vacature op). Alleen-lezen, dus veilig.
+const consentSetVoorOrg = cache(
+  async (organizationId: string): Promise<ReadonlySet<string>> => {
+    const consents = await prisma.candidateConsent.findMany({
+      where: { organizationId, scope: "contact_details", revokedAt: null },
+      select: { candidateUserId: true, vacancyId: true },
+    });
+    return new Set(
+      consents.map((c) =>
+        c.vacancyId === null ? c.candidateUserId : `${c.candidateUserId}:${c.vacancyId}`,
+      ),
+    );
+  },
+);
 
 function dektConsent(
   consentSet: ReadonlySet<string>,

@@ -15,7 +15,7 @@ import {
 } from "@/server/vacancies";
 import { candidatesForVacancy } from "@/server/matching";
 import {
-  listApplicationsForVacancy,
+  listApplicationsForVacancies,
   type VacancyApplicationEntry,
 } from "@/server/applications";
 import { effectiveEntitlements, getActiveSubscription } from "@/lib/billing";
@@ -144,16 +144,13 @@ export default async function PraktijkDashboard({
     }),
   );
 
-  // Compacte pipeline per vacature.
-  const sollicitatiesPerVacature = new Map<string, VacancyApplicationEntry[]>();
-  await Promise.all(
-    vacatures.map(async (vacature) => {
-      sollicitatiesPerVacature.set(
-        vacature.id,
-        await listApplicationsForVacancy(ctx, vacature.id),
-      );
-    }),
-  );
+  // Compacte pipeline per vacature — gebatcht opgehaald (PERF: één
+  // tenantcheck + één IN-query in plaats van twee queries per vacature).
+  const sollicitatiesPerVacature: Map<string, VacancyApplicationEntry[]> =
+    await listApplicationsForVacancies(
+      ctx,
+      vacatures.map((vacature) => vacature.id),
+    );
 
   const planNaam = effectief.planCode
     ? PLAN_CATALOG[effectief.planCode].name

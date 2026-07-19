@@ -12,6 +12,7 @@ import { getPlanVersion, type PlanCode } from "@/domain/entitlements";
 import { audit } from "@/lib/audit";
 import { TRIAL_DAYS } from "@/lib/config";
 import { prisma } from "@/lib/db";
+import { verversAbonnementCache } from "./abonnement-cache";
 import {
   processInboundWebhook,
   syncPlanCatalog,
@@ -93,6 +94,7 @@ export class LocalTestBillingProvider implements BillingProviderAdapter {
       where: { organizationId: orgId, status: { not: "canceled" } },
       data: { status: "canceled" },
     });
+    verversAbonnementCache();
 
     const now = new Date();
     const trialDays =
@@ -122,6 +124,7 @@ export class LocalTestBillingProvider implements BillingProviderAdapter {
         trialEndsAt,
       },
     });
+    verversAbonnementCache();
     await audit("subscription.start", "Subscription", subscription.id, {
       organizationId: orgId,
       meta: { planCode, planVersion: catalogVersion.version, status },
@@ -162,6 +165,7 @@ export class LocalTestBillingProvider implements BillingProviderAdapter {
         currentPeriodEnd: addMonths(now, 1),
       },
     });
+    verversAbonnementCache();
     await audit("subscription.change_plan", "Subscription", current.id, {
       organizationId: orgId,
       meta: {
@@ -199,6 +203,7 @@ export class LocalTestBillingProvider implements BillingProviderAdapter {
           where: { id: current.id },
           data: { scheduledPlanVersionId: null, scheduledChangeAt: null },
         });
+        verversAbonnementCache();
         await audit("subscription.schedule_change.cancel", "Subscription", current.id, {
           organizationId: orgId,
           meta: { keptPlan: planCode },
@@ -222,6 +227,7 @@ export class LocalTestBillingProvider implements BillingProviderAdapter {
         scheduledChangeAt: current.currentPeriodEnd,
       },
     });
+    verversAbonnementCache();
     await audit("subscription.schedule_change", "Subscription", current.id, {
       organizationId: orgId,
       meta: {
@@ -259,6 +265,7 @@ export class LocalTestBillingProvider implements BillingProviderAdapter {
         where: { id: laatste.id },
         data: { cancelAtPeriodEnd: false },
       });
+      verversAbonnementCache();
       await audit("subscription.reactivate", "Subscription", laatste.id, {
         organizationId: orgId,
         meta: { mode: "opzegging_teruggedraaid" },
@@ -280,6 +287,7 @@ export class LocalTestBillingProvider implements BillingProviderAdapter {
         currentPeriodEnd: addMonths(now, 1),
       },
     });
+    verversAbonnementCache();
     await audit("subscription.reactivate", "Subscription", nieuw.id, {
       organizationId: orgId,
       meta: {
@@ -309,6 +317,7 @@ export class LocalTestBillingProvider implements BillingProviderAdapter {
         ? { cancelAtPeriodEnd: true }
         : { status: "canceled", cancelAtPeriodEnd: false },
     });
+    verversAbonnementCache();
     await audit("subscription.cancel", "Subscription", current.id, {
       organizationId: orgId,
       meta: { atPeriodEnd },

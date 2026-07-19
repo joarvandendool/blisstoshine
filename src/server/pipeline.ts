@@ -846,16 +846,40 @@ export async function listPipelineForVacancy(
   ctx: OrgContext,
   vacancyId: string,
 ): Promise<PipelineCandidateEntry[]> {
-  const vacature = await prisma.vacancy.findFirst({
-    where: { id: vacancyId, organizationId: ctx.organizationId },
+  const per = await listPipelineForVacancies(ctx, [vacancyId]);
+  return per.get(vacancyId) ?? [];
+}
+
+/**
+ * PERF: gebatchte variant — de pipelinepagina haalt de pipeline van álle
+ * vacatures op. In plaats van (1 tenantcheck + 4 findMany's + 1 consent-query)
+ * × N vacatures doet deze variant dezelfde zes queries precies één keer met
+ * `vacancyId IN (…)`, en groepeert daarna in geheugen. Gedrag identiek aan
+ * listPipelineForVacancy per vacature: dezelfde tenantcheck (404 zodra een
+ * vacature niet van deze organisatie is), dezelfde consent-scope per vacature
+ * en dezelfde sortering.
+ */
+export async function listPipelineForVacancies(
+  ctx: OrgContext,
+  vacancyIds: string[],
+): Promise<Map<string, PipelineCandidateEntry[]>> {
+  const uniek = [...new Set(vacancyIds)];
+  const uit = new Map<string, PipelineCandidateEntry[]>();
+  if (uniek.length === 0) return uit;
+
+  // Tenantisolatie: elke gevraagde vacature moet van deze organisatie zijn.
+  const eigen = await prisma.vacancy.findMany({
+    where: { id: { in: uniek }, organizationId: ctx.organizationId },
     select: { id: true },
   });
-  if (!vacature) throw new AuthzError("Vacature niet gevonden", 404);
+  if (eigen.length !== uniek.length) {
+    throw new AuthzError("Vacature niet gevonden", 404);
+  }
 
-  const [uitnodigingen, sollicitaties, gesprekken, wijzigingen] =
+  const [alleUitnodigingen, alleSollicitaties, alleGesprekken, alleWijzigingen] =
     await Promise.all([
       prisma.invitation.findMany({
-        where: { vacancyId: vacature.id },
+        where: { vacancyId: { in: uniek } },
         include: {
           matchSnapshot: {
             select: { id: true, score: true, label: true, result: true },
@@ -864,7 +888,7 @@ export async function listPipelineForVacancy(
         },
       }),
       prisma.application.findMany({
-        where: { vacancyId: vacature.id },
+        where: { vacancyId: { in: uniek } },
         include: {
           matchSnapshot: {
             select: { id: true, score: true, label: true, result: true },
@@ -873,15 +897,80 @@ export async function listPipelineForVacancy(
         },
       }),
       prisma.interview.findMany({
-        where: { vacancyId: vacature.id },
+        where: { vacancyId: { in: uniek } },
         orderBy: { createdAt: "desc" },
       }),
       prisma.pipelineStatusChange.findMany({
-        where: { vacancyId: vacature.id },
+        where: { vacancyId: { in: uniek } },
         orderBy: { createdAt: "asc" },
       }),
     ]);
 
+  const alleKandidaatIds = new Set<string>([
+    ...alleUitnodigingen.map((u) => u.candidateUserId),
+    ...alleSollicitaties.map((s) => s.candidateUserId),
+    ...alleGesprekken.map((g) => g.candidateUserId),
+  ]);
+
+  // Eén consent-query voor alle vacatures; per vacature nagefilterd op scope
+  // (organisatiebreed óf specifiek voor die vacature) — zelfde regel als de
+  // enkelvoudige variant.
+  const alleConsents = alleKandidaatIds.size
+    ? await prisma.candidateConsent.findMany({
+        where: {
+          organizationId: ctx.organizationId,
+          candidateUserId: { in: [...alleKandidaatIds] },
+          scope: CONSENT_SCOPE,
+          revokedAt: null,
+          OR: [{ vacancyId: null }, { vacancyId: { in: uniek } }],
+        },
+        select: { candidateUserId: true, vacancyId: true },
+      })
+    : [];
+
+  for (const doelVacancyId of uniek) {
+    uit.set(
+      doelVacancyId,
+      bouwPipelineEntries(
+        doelVacancyId,
+        alleUitnodigingen.filter((u) => u.vacancyId === doelVacancyId),
+        alleSollicitaties.filter((a) => a.vacancyId === doelVacancyId),
+        alleGesprekken.filter((g) => g.vacancyId === doelVacancyId),
+        alleWijzigingen.filter((w) => w.vacancyId === doelVacancyId),
+        alleConsents,
+      ),
+    );
+  }
+  return uit;
+}
+
+type PipelineUitnodiging = Prisma.InvitationGetPayload<{
+  include: {
+    matchSnapshot: {
+      select: { id: true; score: true; label: true; result: true };
+    };
+    candidate: { select: { name: true; candidateProfile: true } };
+  };
+}>;
+
+type PipelineSollicitatie = Prisma.ApplicationGetPayload<{
+  include: {
+    matchSnapshot: {
+      select: { id: true; score: true; label: true; result: true };
+    };
+    candidate: { select: { name: true; candidateProfile: true } };
+  };
+}>;
+
+/** Interne assemblage per vacature — logica ongewijzigd overgenomen. */
+function bouwPipelineEntries(
+  vacancyId: string,
+  uitnodigingen: PipelineUitnodiging[],
+  sollicitaties: PipelineSollicitatie[],
+  gesprekken: Interview[],
+  wijzigingen: PipelineStatusChange[],
+  alleConsents: { candidateUserId: string; vacancyId: string | null }[],
+): PipelineCandidateEntry[] {
   const kandidaatIds = new Set<string>([
     ...uitnodigingen.map((u) => u.candidateUserId),
     ...sollicitaties.map((s) => s.candidateUserId),
@@ -889,17 +978,11 @@ export async function listPipelineForVacancy(
   ]);
   if (kandidaatIds.size === 0) return [];
 
-  const consents = await prisma.candidateConsent.findMany({
-    where: {
-      organizationId: ctx.organizationId,
-      candidateUserId: { in: [...kandidaatIds] },
-      scope: CONSENT_SCOPE,
-      revokedAt: null,
-      OR: [{ vacancyId: null }, { vacancyId: vacature.id }],
-    },
-    select: { candidateUserId: true },
-  });
-  const metConsent = new Set(consents.map((c) => c.candidateUserId));
+  const metConsent = new Set(
+    alleConsents
+      .filter((c) => c.vacancyId === null || c.vacancyId === vacancyId)
+      .map((c) => c.candidateUserId),
+  );
 
   const entries: PipelineCandidateEntry[] = [];
   for (const kandidaatId of kandidaatIds) {

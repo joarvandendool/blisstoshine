@@ -3,6 +3,7 @@
 // (requireUser/requireMembership) en scopet alle data op de organisatie uit
 // het membership — nooit op client-input.
 
+import { cache } from "react";
 import type {
   MemberRole,
   Membership,
@@ -191,11 +192,19 @@ export async function createOrganizationWithLocation(
  * van de ingelogde gebruiker. Alle vervolgqueries lopen via de teruggegeven
  * ctx en zijn daarmee tenant-geïsoleerd.
  */
+// PERF: React cache() dedupliceert de organisatie-lookup per slug binnen één
+// serverrequest — layout en pagina roepen getOrgForUserBySlug allebei aan
+// (vaak met verschillende capabilities), maar de rij hoeft maar één keer uit
+// de database te komen. Status- en capabilitychecks blijven per aanroep.
+const orgBySlug = cache(async (slug: string) =>
+  prisma.organization.findUnique({ where: { slug } }),
+);
+
 export async function getOrgForUserBySlug(
   slug: string,
   capability?: string,
 ): Promise<{ org: Organization; ctx: OrgContext }> {
-  const org = await prisma.organization.findUnique({ where: { slug } });
+  const org = await orgBySlug(slug);
   if (!org || org.status !== "active") {
     throw new AuthzError("Praktijk niet gevonden", 404);
   }

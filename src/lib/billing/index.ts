@@ -6,6 +6,7 @@
 // In deze release is er alleen de LocalTestBillingProvider (geen echte
 // betalingen). Het Stripe-aansluitpunt is gedocumenteerd in ./README.md.
 
+import { cache } from "react";
 import { Prisma } from "@prisma/client";
 import {
   ADDON_CATALOG,
@@ -29,6 +30,10 @@ import {
   type SubscriptionSnapshot,
 } from "@/domain/entitlements";
 import { audit } from "@/lib/audit";
+import {
+  huidigeAbonnementGeneratie,
+  verversAbonnementCache,
+} from "./abonnement-cache";
 import { TRIAL_DAYS } from "@/lib/config";
 import { prisma } from "@/lib/db";
 import { LocalTestBillingProvider } from "./local";
@@ -158,6 +163,7 @@ export async function syncPlanCatalog(): Promise<void> {
       }
     }
   }
+  verversAbonnementCache();
 }
 
 // ---------- abonnementen ----------
@@ -175,6 +181,21 @@ const SUBSCRIPTION_INCLUDE = {
   items: true,
 } as const;
 
+// PERF: React cache() dedupliceert de abonnementsketen (Subscription +
+// PlanVersion + Plan + Entitlements + items) binnen één serverrequest — pagina's
+// als Talent Radar vroegen die keten tot 7× per request op. De cache leeft
+// nooit langer dan de request; binnen een request wordt hij bovendien
+// omzeild na élke schrijfactie via de generatieteller hieronder, zodat een
+// server action die het abonnement wijzigt nooit een stale rij terugleest.
+const abonnementViaCache = cache(
+  async (orgId: string, _generatie: number): Promise<SubscriptionWithPlan | null> =>
+    prisma.subscription.findFirst({
+      where: { organizationId: orgId, status: { not: "canceled" } },
+      orderBy: { createdAt: "desc" },
+      include: SUBSCRIPTION_INCLUDE,
+    }),
+);
+
 /**
  * Nieuwste niet-geannuleerde abonnement van een organisatie, inclusief
  * planversie, plan en entitlement-rijen. null wanneer er geen is.
@@ -182,11 +203,7 @@ const SUBSCRIPTION_INCLUDE = {
 export async function getActiveSubscription(
   orgId: string,
 ): Promise<SubscriptionWithPlan | null> {
-  return prisma.subscription.findFirst({
-    where: { organizationId: orgId, status: { not: "canceled" } },
-    orderBy: { createdAt: "desc" },
-    include: SUBSCRIPTION_INCLUDE,
-  });
+  return abonnementViaCache(orgId, huidigeAbonnementGeneratie());
 }
 
 /**
@@ -216,7 +233,7 @@ export async function ensureOrgSubscription(
   const now = new Date();
   const trialEndsAt = addDays(now, trialVersion.trialDays ?? TRIAL_DAYS);
 
-  return prisma.subscription.create({
+  const aangemaakt = await prisma.subscription.create({
     data: {
       organizationId: orgId,
       planVersionId: dbVersion.id,
@@ -227,6 +244,8 @@ export async function ensureOrgSubscription(
     },
     include: SUBSCRIPTION_INCLUDE,
   });
+  verversAbonnementCache();
+  return aangemaakt;
 }
 
 // ---------- effectieve entitlements ----------
@@ -461,6 +480,7 @@ export async function setSubscriptionItems(
           }),
     ),
   );
+  verversAbonnementCache();
 
   await audit("subscription.items.change", "Subscription", sub.id, {
     organizationId: orgId,
@@ -523,6 +543,7 @@ export async function applyScheduledChanges(
         scheduledChangeAt: null,
       },
     });
+    verversAbonnementCache();
     await audit("subscription.scheduled_change.apply", "Subscription", sub.id, {
       organizationId: sub.organizationId,
       meta: {
@@ -547,6 +568,7 @@ export async function applyScheduledChanges(
       where: { id: sub.id },
       data: { status: "canceled" },
     });
+    verversAbonnementCache();
     await audit("subscription.cancel.effectuate", "Subscription", sub.id, {
       organizationId: sub.organizationId,
       meta: { periodEnd: sub.currentPeriodEnd.toISOString() },
@@ -651,6 +673,7 @@ export async function processInboundWebhook(
         where: { id: sub.id },
         data: { status: "past_due", graceUntil },
       });
+      verversAbonnementCache();
       await audit("subscription.payment_failed", "Subscription", sub.id, {
         organizationId,
         meta: { provider, externalId, graceUntil: graceUntil.toISOString() },
@@ -667,6 +690,7 @@ export async function processInboundWebhook(
           currentPeriodEnd: addMonths(now, 1),
         },
       });
+      verversAbonnementCache();
       await audit("subscription.payment_succeeded", "Subscription", sub.id, {
         organizationId,
         meta: { provider, externalId },

@@ -7,6 +7,7 @@
 //   services filteren altijd op ctx.organizationId.
 // - Rollen bepalen schrijfrechten (zie ROLE_CAPABILITIES).
 
+import { cache } from "react";
 import type { MemberRole } from "@prisma/client";
 import { prisma } from "./db";
 import { getSessionUser, type SessionUser } from "./auth";
@@ -87,15 +88,23 @@ export async function requireUser(): Promise<SessionUser> {
  * gecontroleerd: een membership met niet-lege locationIds geeft alleen toegang
  * tot die locaties (AuthzError 403 anders).
  */
+// PERF: layout én pagina (en soms meerdere services in dezelfde request)
+// verifiëren hetzelfde membership. React cache() dedupliceert de rij-lookup
+// per (userId, organizationId) binnen één serverrequest; álle checks
+// (status, capability, locatie) blijven per aanroep gewoon draaien.
+const membershipRij = cache(async (userId: string, organizationId: string) =>
+  prisma.membership.findUnique({
+    where: { userId_organizationId: { userId, organizationId } },
+  }),
+);
+
 export async function requireMembership(
   organizationId: string,
   capability?: string,
   locationId?: string,
 ): Promise<OrgContext> {
   const user = await requireUser();
-  const membership = await prisma.membership.findUnique({
-    where: { userId_organizationId: { userId: user.id, organizationId } },
-  });
+  const membership = await membershipRij(user.id, organizationId);
   if (!membership || membership.status !== "active") {
     throw new AuthzError("Geen toegang tot deze organisatie", 403);
   }

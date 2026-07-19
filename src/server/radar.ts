@@ -9,6 +9,7 @@
 // de teaser (radarTeaser) is bewust vrij van entitlements zodat trial- en
 // essential-praktijken en de vacaturewizard het totale potentieel zien.
 
+import { cache } from "react";
 import type { CandidateProfile } from "@prisma/client";
 import { AuthzError, type OrgContext } from "@/lib/authz";
 import { track } from "@/lib/analytics";
@@ -124,12 +125,16 @@ async function resolveMatchVacancy(
   return { matchVacancy: input.draft, vacancyId: null };
 }
 
-/** Actieve, vindbare kandidaten (verborgen profielen tellen nergens in mee). */
-async function actieveKandidaten(): Promise<CandidateProfile[]> {
+/**
+ * Actieve, vindbare kandidaten (verborgen profielen tellen nergens in mee).
+ * PERF: React cache() — de radarpagina bouwt een rapport per vacature, maar
+ * binnen één serverrequest volstaat één scan van de kandidatenpool.
+ */
+const actieveKandidaten = cache(async (): Promise<CandidateProfile[]> => {
   return prisma.candidateProfile.findMany({
     where: { status: "active", visibility: { not: "hidden" } },
   });
-}
+});
 
 /** Potentieel: juiste rol én binnen reisafstand. */
 function potentiëlePool(

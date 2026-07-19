@@ -13,7 +13,7 @@ import Link from "next/link";
 import { getOrgForUserBySlug } from "@/server/organizations";
 import { listVacancies, type VacancyWithLocation } from "@/server/vacancies";
 import {
-  listPipelineForVacancy,
+  listPipelineForVacancies,
   FEEDBACK_REASON_LABELS,
   PIPELINE_STATUS_LABELS,
   type PipelineCandidateEntry,
@@ -105,12 +105,16 @@ export default async function PipelinePagina({
   const { org, ctx } = await getOrgForUserBySlug(slug, "pipeline.manage");
 
   const vacatures = await listVacancies(ctx);
-  const perVacature = await Promise.all(
-    vacatures.map(async (vacature) => ({
-      vacature,
-      entries: await listPipelineForVacancy(ctx, vacature.id),
-    })),
+  // PERF: gebatcht — één set IN-queries voor alle vacatures in plaats van
+  // (tenantcheck + 5 queries) per vacature.
+  const pipelinePerVacature = await listPipelineForVacancies(
+    ctx,
+    vacatures.map((vacature) => vacature.id),
   );
+  const perVacature = vacatures.map((vacature) => ({
+    vacature,
+    entries: pipelinePerVacature.get(vacature.id) ?? [],
+  }));
   const metKandidaten = perVacature.filter(({ entries }) => entries.length > 0);
 
   return (

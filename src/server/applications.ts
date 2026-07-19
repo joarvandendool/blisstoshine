@@ -147,14 +147,35 @@ export async function listApplicationsForVacancy(
   ctx: OrgContext,
   vacancyId: string,
 ): Promise<VacancyApplicationEntry[]> {
-  const vacature = await prisma.vacancy.findFirst({
-    where: { id: vacancyId, organizationId: ctx.organizationId },
+  const per = await listApplicationsForVacancies(ctx, [vacancyId]);
+  return per.get(vacancyId) ?? [];
+}
+
+/**
+ * PERF: gebatchte variant voor pagina's die de sollicitaties van meerdere
+ * vacatures tonen (praktijkdashboard). In plaats van (tenantcheck +
+ * findMany) × N vacatures: één tenantcheck en één findMany met
+ * `vacancyId IN (…)`. Gedrag identiek per vacature — zelfde 404 zodra een
+ * vacature niet van deze organisatie is, zelfde sortering (nieuwste eerst).
+ */
+export async function listApplicationsForVacancies(
+  ctx: OrgContext,
+  vacancyIds: string[],
+): Promise<Map<string, VacancyApplicationEntry[]>> {
+  const uniek = [...new Set(vacancyIds)];
+  const uit = new Map<string, VacancyApplicationEntry[]>();
+  if (uniek.length === 0) return uit;
+
+  const eigen = await prisma.vacancy.findMany({
+    where: { id: { in: uniek }, organizationId: ctx.organizationId },
     select: { id: true },
   });
-  if (!vacature) throw new AuthzError("Vacature niet gevonden", 404);
+  if (eigen.length !== uniek.length) {
+    throw new AuthzError("Vacature niet gevonden", 404);
+  }
 
   const sollicitaties = await prisma.application.findMany({
-    where: { vacancyId: vacature.id },
+    where: { vacancyId: { in: uniek } },
     include: {
       matchSnapshot: true,
       candidate: { select: { name: true, candidateProfile: true } },
@@ -162,12 +183,16 @@ export async function listApplicationsForVacancy(
     orderBy: { createdAt: "desc" },
   });
 
-  return sollicitaties.map(({ matchSnapshot, candidate, ...application }) => ({
-    application: application as Application,
-    candidateName: candidate.name,
-    profile: candidate.candidateProfile,
-    snapshot: matchSnapshot,
-  }));
+  for (const id of uniek) uit.set(id, []);
+  for (const { matchSnapshot, candidate, ...application } of sollicitaties) {
+    uit.get(application.vacancyId)?.push({
+      application: application as Application,
+      candidateName: candidate.name,
+      profile: candidate.candidateProfile,
+      snapshot: matchSnapshot,
+    });
+  }
+  return uit;
 }
 
 export interface CandidateApplicationEntry {

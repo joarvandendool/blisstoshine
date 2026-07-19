@@ -4,6 +4,7 @@
 // alles in de app praat uitsluitend met getSessionUser()/requireUser().
 
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 import { prisma } from "./db";
@@ -111,18 +112,24 @@ export type SessionUser = {
   isPlatformAdmin: boolean;
 };
 
-export async function getSessionUser(): Promise<SessionUser | null> {
-  const store = await cookies();
-  const token = store.get(COOKIE_NAME)?.value;
-  if (!token) return null;
-  const userId = verifySessionToken(token);
-  if (!userId) return null;
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, email: true, name: true, isPlatformAdmin: true },
-  });
-  return user;
-}
+// PERF: React cache() dedupliceert de sessie-lookup binnen één serverrequest —
+// layout, pagina en services vragen de sessie los van elkaar op, maar er gaat
+// per request nog maar één User-query naar de database. Semantiek ongewijzigd:
+// de cache leeft nooit langer dan de request zelf.
+export const getSessionUser = cache(
+  async (): Promise<SessionUser | null> => {
+    const store = await cookies();
+    const token = store.get(COOKIE_NAME)?.value;
+    if (!token) return null;
+    const userId = verifySessionToken(token);
+    if (!userId) return null;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, name: true, isPlatformAdmin: true },
+    });
+    return user;
+  },
+);
 
 export async function registerUser(input: {
   email: string;
