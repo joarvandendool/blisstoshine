@@ -8,6 +8,7 @@
 // gedrag achter dezelfde BillingProviderAdapter-interface.
 
 import { randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { getPlanVersion, type PlanCode } from "@/domain/entitlements";
 import { audit } from "@/lib/audit";
 import { TRIAL_DAYS } from "@/lib/config";
@@ -112,16 +113,30 @@ export class LocalTestBillingProvider implements BillingProviderAdapter {
       currentPeriodEnd = addMonths(now, opts?.interval === "yearly" ? 12 : 1);
     }
 
-    const subscription = await prisma.subscription.create({
-      data: {
-        organizationId: orgId,
-        planVersionId: row.id,
-        status,
-        currentPeriodStart: now,
-        currentPeriodEnd,
-        trialEndsAt,
-      },
-    });
+    let subscription;
+    try {
+      subscription = await prisma.subscription.create({
+        data: {
+          organizationId: orgId,
+          planVersionId: row.id,
+          status,
+          currentPeriodStart: now,
+          currentPeriodEnd,
+          trialEndsAt,
+        },
+      });
+    } catch (error) {
+      // Partiële unieke index (één niet-geannuleerd abonnement per org): een
+      // gelijktijdige checkout heeft al een actief abonnement aangemaakt.
+      // Idempotent: geen tweede (dubbele) subscription.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        return;
+      }
+      throw error;
+    }
     await audit("subscription.start", "Subscription", subscription.id, {
       organizationId: orgId,
       meta: { planCode, planVersion: catalogVersion.version, status },
@@ -271,15 +286,27 @@ export class LocalTestBillingProvider implements BillingProviderAdapter {
     await syncPlanCatalog();
     const { row, catalogVersion } = await resolvePlanVersionRow(planCode);
     const now = new Date();
-    const nieuw = await prisma.subscription.create({
-      data: {
-        organizationId: orgId,
-        planVersionId: row.id,
-        status: "active",
-        currentPeriodStart: now,
-        currentPeriodEnd: addMonths(now, 1),
-      },
-    });
+    let nieuw;
+    try {
+      nieuw = await prisma.subscription.create({
+        data: {
+          organizationId: orgId,
+          planVersionId: row.id,
+          status: "active",
+          currentPeriodStart: now,
+          currentPeriodEnd: addMonths(now, 1),
+        },
+      });
+    } catch (error) {
+      // Gelijktijdige heractivatie heeft al een actief abonnement aangemaakt.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        return;
+      }
+      throw error;
+    }
     await audit("subscription.reactivate", "Subscription", nieuw.id, {
       organizationId: orgId,
       meta: {

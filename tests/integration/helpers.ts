@@ -45,6 +45,13 @@ export async function prepareTestDb(): Promise<void> {
       env: process.env,
       stdio: "ignore",
     });
+    // Partiële unieke index (checkout-idempotency) staat als raw SQL in de
+    // migratie en is dus niet zichtbaar voor `prisma db push`; hier expliciet
+    // aanmaken zodat de testdatabase dezelfde constraint kent als productie.
+    await prisma.$executeRawUnsafe(
+      `CREATE UNIQUE INDEX IF NOT EXISTS "Subscription_actief_per_org_uniek"
+       ON "Subscription"("organizationId") WHERE status <> 'canceled'`,
+    );
     schemaKlaar = true;
   }
   await truncateAll();

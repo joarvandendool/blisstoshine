@@ -519,3 +519,48 @@ describe("inkomende webhooks", () => {
     expect(sub.graceUntil).toBeNull();
   });
 });
+
+describe("checkout-idempotency", () => {
+  it("staat hooguit één niet-geannuleerd abonnement per organisatie toe (directe dubbele insert faalt)", async () => {
+    const { orgId } = await nieuweOrgMetPlan(
+      "dubbel@commercieel.nl",
+      "Praktijk Dubbel",
+      "growth",
+    );
+    const bestaand = await huidigAbonnement(orgId);
+
+    // Een rauwe tweede actieve subscription-rij wordt door de partiële unieke
+    // index geweigerd (P2002).
+    await expect(
+      prisma.subscription.create({
+        data: {
+          organizationId: orgId,
+          planVersionId: bestaand.planVersionId,
+          status: "active",
+          currentPeriodStart: new Date(),
+          currentPeriodEnd: new Date(Date.now() + 30 * 86_400_000),
+        },
+      }),
+    ).rejects.toMatchObject({ code: "P2002" });
+  });
+
+  it("gelijktijdige checkout levert geen dubbel actief abonnement op", async () => {
+    const { orgId } = await nieuweOrgMetPlan(
+      "race@commercieel.nl",
+      "Praktijk Race",
+      "essential",
+    );
+    const provider = getBillingProvider();
+
+    // Twee gelijktijdige upgrades naar hetzelfde plan (dubbelklik/retry).
+    await Promise.all([
+      provider.startSubscription(orgId, "growth"),
+      provider.startSubscription(orgId, "growth"),
+    ]);
+
+    const actief = await prisma.subscription.count({
+      where: { organizationId: orgId, status: { not: "canceled" } },
+    });
+    expect(actief).toBe(1);
+  });
+});
