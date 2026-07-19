@@ -66,4 +66,5 @@ uitgevoerd zonder expliciete toestemming). Zie `IOS_RELEASE_RUNBOOK.md §0`.
 ## Branch en laatste commit
 
 - **Branch:** `claude/ios-candidate-app-llqh81`
-- **Laatste commit:** zie `git log -1` op deze branch (ingevuld bij de push).
+- **Laatste commit:** `7bfcac5c716f4a1558bfe99c0541e0986790b3a8` —
+  "Kandidaatgerichte iOS-app (Expo/React Native) op bestaande backend".
