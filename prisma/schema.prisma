@@ -572,6 +572,7 @@ model NotificationPreference {
   type    String // notificatietype of "all"
   inApp   Boolean @default(true)
   email   Boolean @default(true)
+  push    Boolean @default(true) // mobiele pushmeldingen (kandidaat-app)
 
   @@unique([userId, type])
 }
@@ -775,6 +776,48 @@ model RateLimitCounter {
   @@id([key, windowStart])
   // Retentie (7 dgn): verlopen vensters over álle keys heen opruimen.
   @@index([windowStart])
+}
+
+// ---------- mobiele kandidaat-app ----------
+
+// Intrekbare mobiele sessie (bearer-tokens; zie MOBILE_API_CONTRACT.md §2).
+// Tokens worden uitsluitend als sha256-hash opgeslagen. Refresh-tokens zijn
+// single-use: previousRefreshTokenHash detecteert replay na rotatie, waarna
+// de hele sessie wordt ingetrokken.
+model MobileSession {
+  id                       String    @id @default(cuid())
+  userId                   String
+  accessTokenHash          String    @unique
+  accessTokenExpiresAt     DateTime
+  refreshTokenHash         String    @unique
+  refreshTokenExpiresAt    DateTime
+  previousRefreshTokenHash String?   @unique
+  deviceName               String?
+  platform                 String?
+  createdAt                DateTime  @default(now())
+  lastSeenAt               DateTime  @default(now())
+  revokedAt                DateTime?
+  revokedReason            String? // logout | replay_detected | account_deleted | admin
+
+  pushTokens MobilePushToken[]
+
+  @@index([userId, revokedAt])
+}
+
+// Expo-pushtoken per apparaat, gekoppeld aan de mobiele sessie zodat
+// uitloggen het token automatisch opruimt. Bevat nooit kandidaatdata.
+model MobilePushToken {
+  id        String        @id @default(cuid())
+  userId    String
+  sessionId String
+  session   MobileSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  token     String        @unique
+  platform  String // ios | android
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([sessionId])
 }
 
 // Idempotente verwerking van inkomende provider-webhooks (fase 4).

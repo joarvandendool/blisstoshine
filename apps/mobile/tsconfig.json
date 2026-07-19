@@ -1,0 +1,25 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "types": [
+      "jest",
+      "node"
+    ],
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@mondzorgwerkt/api-contract": [
+        "../../packages/api-contract/src"
+      ]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "../../packages/api-contract/src/**/*.ts",
+    "../../src/domain/taxonomy/**/*.ts",
+    "../../src/domain/matching/types.ts"
+  ]
+}

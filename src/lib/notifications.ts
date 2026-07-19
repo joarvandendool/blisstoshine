@@ -101,6 +101,22 @@ export async function sendNotification(
       }
     }
 
+    // Mobiele push (kandidaat-app): zelfde gebeurtenis, apart kanaal.
+    // Dynamische import — de pushmodule is optioneel en faalt zacht; de
+    // dedupeKey hierboven garandeert hooguit één push per notificatie.
+    try {
+      const { sendPushForNotification } = await import("@/server/mobile/push");
+      await sendPushForNotification({
+        userId: input.userId,
+        type: input.type,
+        title: input.title,
+        href: input.href ?? null,
+        notificationId: notificatie.id,
+      });
+    } catch (pushFout) {
+      console.error("Push versturen faalde (zacht):", pushFout);
+    }
+
     // Sleutelnaam bewust zonder "email": het PII-filter van de analytics-
     // envelope weigert sleutels die op persoonsgegevens lijken.
     await track("notification_sent", {

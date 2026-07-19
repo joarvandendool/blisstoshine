@@ -114,14 +114,34 @@ export type SessionUser = {
 export async function getSessionUser(): Promise<SessionUser | null> {
   const store = await cookies();
   const token = store.get(COOKIE_NAME)?.value;
-  if (!token) return null;
-  const userId = verifySessionToken(token);
-  if (!userId) return null;
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, email: true, name: true, isPlatformAdmin: true },
-  });
-  return user;
+  if (token) {
+    const userId = verifySessionToken(token);
+    if (!userId) return null;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, name: true, isPlatformAdmin: true },
+    });
+    return user;
+  }
+
+  // Mobiele kandidaat-app: geen cookie maar "Authorization: Bearer mzm_at_…"
+  // (intrekbare sessie, zie src/lib/mobile-auth.ts). Browsers sturen deze
+  // header nooit cross-site mee, dus dit voegt geen CSRF-oppervlak toe; de
+  // Origin-controle op cookie-endpoints blijft ongewijzigd. Dynamische import
+  // om een importcyclus (mobile-auth → auth) te vermijden.
+  try {
+    const { headers } = await import("next/headers");
+    if (typeof headers !== "function") return null;
+    const authorization = (await headers()).get("authorization");
+    if (!authorization?.startsWith("Bearer mzm_at_")) return null;
+    const { mobileSessionFromAuthorization } = await import("./mobile-auth");
+    const ctx = await mobileSessionFromAuthorization(authorization);
+    return ctx?.user ?? null;
+  } catch {
+    // Buiten een request-context (statische render, tests zonder headers-mock)
+    // is er simpelweg geen mobiele sessie.
+    return null;
+  }
 }
 
 export async function registerUser(input: {

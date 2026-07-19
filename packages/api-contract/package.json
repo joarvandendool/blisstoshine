@@ -1,0 +1,9 @@
+{
+  "name": "@mondzorgwerkt/api-contract",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Gedeeld, puur TypeScript-contract tussen webapp/server en de mobiele kandidaat-app. Geen Prisma, geen server-only imports.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "sideEffects": false
+}
