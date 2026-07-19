@@ -6,13 +6,19 @@
 // vacaturewizard (mode="vacancy"), als weergave (mode="readonly") en in de
 // Match Studio als overlay van kandidaat × vacature (mode="overlay").
 //
-// Toegankelijkheid:
+// Toegankelijkheid & layout (audit-P1 #3):
 // - elke cel is een <button> met aria-pressed en een volledige Nederlandse
 //   aria-label ("Dinsdag ochtend: voorkeur");
 // - een staat wordt nooit alléén met kleur getoond: altijd icoon + tekst;
-// - tap-targets zijn minimaal 48px hoog; tab-volgorde volgt de leesrichting.
+// - tap-targets zijn minimaal 44×44px op elke viewport: onder `sm` kantelt
+//   het grid (dagen als rijen, dagdelen als kolommen — zie .wg-grid in
+//   globals.css) zodat elke cel de volle breedte benut;
+// - lege cellen hebben een zichtbare, gestippelde celbegrenzing zodat de
+//   klik-affordance ook in de lege staat leesbaar is;
+// - de legenda staat vóór het grid, zodat de betekenis van de staten
+//   bekend is voordat je ze aanraakt.
 
-import type { ReactElement } from "react";
+import type { CSSProperties, ReactElement } from "react";
 import { cx } from "@/components/ui";
 import {
   DAYPARTS,
@@ -123,7 +129,15 @@ interface CelStijl {
   aria: string;
   icoon: (props: IcoonProps) => ReactElement;
   klasse: string;
+  /** Extra klassen die alleen op interactieve cellen (buttons) komen. */
+  interactiefKlasse?: string;
 }
+
+/** Lege cellen: zichtbare, gestippelde celbegrenzing als affordance. */
+const LEGE_CEL =
+  "border-dashed border-mw-border-strong bg-white/70 text-ink/50";
+const LEGE_CEL_HOVER =
+  "hover:border-blauw-400 hover:bg-white hover:text-ink/70";
 
 const KANDIDAAT_STATEN: Record<AvailabilityLevel, CelStijl> = {
   preferred: {
@@ -132,18 +146,21 @@ const KANDIDAAT_STATEN: Record<AvailabilityLevel, CelStijl> = {
     icoon: SterIcoon,
     klasse:
       "border-transparent bg-blauw-600 text-white shadow-(--shadow-knop-blauw)",
+    interactiefKlasse: "hover:bg-blauw-700",
   },
   available: {
     tekst: "Beschikbaar",
     aria: "beschikbaar",
     icoon: VinkIcoon,
     klasse: "border-blauw-200 bg-brand-light text-blauw-900",
+    interactiefKlasse: "hover:border-blauw-400",
   },
   unavailable: {
     tekst: "",
     aria: "niet beschikbaar",
     icoon: StreepIcoon,
-    klasse: "border-white/70 bg-white/45 text-ink/45",
+    klasse: LEGE_CEL,
+    interactiefKlasse: LEGE_CEL_HOVER,
   },
 };
 
@@ -154,18 +171,21 @@ const VACATURE_STATEN: Record<"required" | "preferred" | "leeg", CelStijl> = {
     icoon: SlotIcoon,
     klasse:
       "border-transparent bg-blauw-600 text-white shadow-(--shadow-knop-blauw)",
+    interactiefKlasse: "hover:bg-blauw-700",
   },
   preferred: {
     tekst: "Gewenst",
     aria: "gewenst",
     icoon: SterIcoon,
-    klasse: "border-roze-200 bg-roze-100 text-roze-800",
+    klasse: "border-roze-300 bg-roze-100 text-roze-800",
+    interactiefKlasse: "hover:border-roze-400",
   },
   leeg: {
     tekst: "",
     aria: "niet gevraagd",
     icoon: StreepIcoon,
-    klasse: "border-white/70 bg-white/45 text-ink/45",
+    klasse: LEGE_CEL,
+    interactiefKlasse: LEGE_CEL_HOVER,
   },
 };
 
@@ -182,19 +202,19 @@ const OVERLAY_STATEN: Record<OverlayStaat, CelStijl> = {
     tekst: "Deels",
     aria: "gedeeltelijke match",
     icoon: HalfIcoon,
-    klasse: "border-roze-200 bg-roze-100 text-roze-800",
+    klasse: "border-roze-300 bg-roze-100 text-roze-800",
   },
   mismatch: {
     tekst: "Mis",
     aria: "geen match",
     icoon: KruisIcoon,
-    klasse: "border-red-200 bg-red-50 text-red-700",
+    klasse: "border-mw-error/25 bg-mw-error-bg text-mw-error",
   },
   nietGevraagd: {
     tekst: "",
     aria: "niet gevraagd",
     icoon: StreepIcoon,
-    klasse: "border-white/60 bg-white/35 text-ink/35",
+    klasse: "border-dashed border-mw-border bg-white/50 text-ink/40",
   },
 };
 
@@ -273,45 +293,47 @@ export function WeekGrid(props: WeekGridProps) {
   const interactief = props.mode === "candidate" || props.mode === "vacancy";
 
   const celBasis = cx(
-    "flex w-full items-center justify-center gap-1.5 rounded-xl border backdrop-blur-sm",
-    "transition-[background-color,color,box-shadow] duration-150 motion-reduce:transition-none",
-    compact ? "min-h-10 px-1 py-1" : "min-h-12 px-1.5 py-2",
+    "wg-cell flex w-full items-center justify-center gap-1.5 rounded-xl border backdrop-blur-sm",
+    "transition-[background-color,border-color,color,box-shadow] duration-(--motion-fast) motion-reduce:transition-none",
+    // Tap-target ≥ 44px op elke viewport (audit-P1 #3).
+    compact ? "min-h-11 px-1 py-1" : "min-h-12 px-1.5 py-2",
   );
 
   return (
     <div
       role="group"
       aria-label="Werkweek: dagen en dagdelen"
-      className={cx("w-full", className)}
+      className={cx("wg-wrap w-full", className)}
     >
-      <div
-        className={cx(
-          "grid gap-1.5",
-          "grid-cols-[auto_repeat(7,minmax(0,1fr))]",
-        )}
-      >
-        {/* kopregel */}
-        <div aria-hidden="true" />
-        {WEEKDAYS.map((dag) => (
+      {/* Legenda vóór het grid: betekenis eerst, dan interactie. */}
+      {!compact ? <Legenda mode={props.mode} /> : null}
+
+      <div className="wg-grid">
+        {/* hoek + daglabels; op smalle containers worden dit rijlabels (CSS) */}
+        <div aria-hidden="true" className="wg-corner" />
+        {WEEKDAYS.map((dag, dagIndex) => (
           <div
             key={dag}
+            style={{ "--wg-d": dagIndex } as CSSProperties}
             className={cx(
-              "pb-1 text-center text-xs font-semibold",
+              "wg-day flex items-center pb-1 text-xs font-semibold",
               WEEKEND.has(dag) ? "text-ink/60" : "text-ink",
             )}
           >
-            <span className="hidden lg:inline">{label(dag)}</span>
-            <span aria-hidden="true" className="capitalize lg:hidden">
+            {/* voluit op smal (rijlabel) en breed; kort op middenmaten */}
+            <span className="wg-day-lang">{label(dag)}</span>
+            <span aria-hidden="true" className="wg-day-kort capitalize">
               {dag}
             </span>
           </div>
         ))}
 
-        {/* rijen per dagdeel */}
-        {DAYPARTS.map((deel) => (
+        {/* rijen per dagdeel (kolommen op mobiel) */}
+        {DAYPARTS.map((deel, deelIndex) => (
           <RijVoorDagdeel
             key={deel}
             deel={deel}
+            deelIndex={deelIndex}
             compact={compact}
             interactief={interactief}
             celBasis={celBasis}
@@ -320,14 +342,13 @@ export function WeekGrid(props: WeekGridProps) {
           />
         ))}
       </div>
-
-      {!compact ? <Legenda mode={props.mode} /> : null}
     </div>
   );
 }
 
 interface RijProps {
   deel: Daypart;
+  deelIndex: number;
   compact: boolean;
   interactief: boolean;
   celBasis: string;
@@ -337,6 +358,7 @@ interface RijProps {
 
 function RijVoorDagdeel({
   deel,
+  deelIndex,
   compact,
   interactief,
   celBasis,
@@ -346,17 +368,22 @@ function RijVoorDagdeel({
   return (
     <>
       <div
+        style={{ "--wg-p": deelIndex } as CSSProperties}
         className={cx(
-          "flex items-center pr-2 text-xs font-semibold text-ink/70",
-          compact ? "min-h-10" : "min-h-12",
+          "wg-part flex items-center text-xs font-semibold text-mw-text-muted",
+          compact ? "min-h-11" : "min-h-12",
         )}
       >
         {label(deel)}
       </div>
-      {WEEKDAYS.map((dag) => {
+      {WEEKDAYS.map((dag, dagIndex) => {
         const stijl = celStijl(dag, deel);
         const Icoon = stijl.icoon;
         const ariaLabel = `${label(dag)} ${deel}: ${stijl.aria}`;
+        const celStyle = {
+          "--wg-d": dagIndex,
+          "--wg-p": deelIndex,
+        } as CSSProperties;
         const inhoud = (
           <>
             <Icoon />
@@ -374,6 +401,7 @@ function RijVoorDagdeel({
               key={dag}
               role="img"
               aria-label={ariaLabel}
+              style={celStyle}
               className={cx(
                 celBasis,
                 stijl.klasse,
@@ -393,10 +421,12 @@ function RijVoorDagdeel({
             aria-pressed={geselecteerd}
             aria-label={ariaLabel}
             onClick={() => klikCel(dag, deel)}
+            style={celStyle}
             className={cx(
               celBasis,
               "cursor-pointer",
               stijl.klasse,
+              stijl.interactiefKlasse,
               WEEKEND.has(dag) && "opacity-80 hover:opacity-100",
               "motion-safe:active:scale-95",
             )}
@@ -417,22 +447,22 @@ function Legenda({ mode }: { mode: WeekGridProps["mode"] }) {
       ? [
           { icoon: SlotIcoon, tekst: "Nodig", klasse: "bg-blauw-600 text-white" },
           { icoon: SterIcoon, tekst: "Gewenst", klasse: "bg-roze-100 text-roze-800" },
-          { icoon: StreepIcoon, tekst: "Niet gevraagd", klasse: "bg-white/60 text-ink/60" },
+          { icoon: StreepIcoon, tekst: "Niet gevraagd", klasse: "border border-dashed border-mw-border-strong bg-white/70 text-ink/60" },
         ]
       : mode === "overlay"
         ? [
             { icoon: VinkIcoon, tekst: "Match", klasse: "bg-blauw-600 text-white" },
             { icoon: HalfIcoon, tekst: "Gedeeltelijk", klasse: "bg-roze-100 text-roze-800" },
-            { icoon: KruisIcoon, tekst: "Geen match", klasse: "bg-red-50 text-red-700" },
+            { icoon: KruisIcoon, tekst: "Geen match", klasse: "bg-mw-error-bg text-mw-error" },
           ]
         : [
             { icoon: SterIcoon, tekst: "Voorkeur", klasse: "bg-blauw-600 text-white" },
             { icoon: VinkIcoon, tekst: "Beschikbaar", klasse: "bg-brand-light text-blauw-900" },
-            { icoon: StreepIcoon, tekst: "Niet beschikbaar", klasse: "bg-white/60 text-ink/60" },
+            { icoon: StreepIcoon, tekst: "Niet beschikbaar", klasse: "border border-dashed border-mw-border-strong bg-white/70 text-ink/60" },
           ];
 
   return (
-    <ul className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+    <ul className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
       {items.map(({ icoon: Icoon, tekst, klasse }) => (
         <li key={tekst} className="flex items-center gap-1.5 text-xs font-medium text-ink/80">
           <span
