@@ -54,6 +54,75 @@
   --shadow-zweef: 0 24px 60px rgb(1 32 236 / 0.12);
   --shadow-knop-blauw: 0 10px 30px rgb(1 32 236 / 0.25);
   --shadow-knop-roze: 0 10px 30px rgb(237 108 165 / 0.35);
+
+  /* ============================================================
+     mw-tokens (fase 3, designsysteem). Bron: BRAND_TRANSLATION.md.
+     Alle contrastwaarden zijn gemeten (WCAG-luminantie) tegen wit
+     en canvas #f4f8fc; genoemde ratio's gelden op canvas.
+     ============================================================ */
+
+  /* ---- merkbron ---- */
+  --color-mw-cloud: #cddfee; /* atmosfeer/canvasvlakken — nooit voor tekst */
+  --color-mw-cobalt: #0120ec; /* dé actiekleur; wit op cobalt = 8,7:1 */
+  --color-mw-rose: #ed6ca5; /* menselijk accent — alleen tint/rand/detail,
+                               NOOIT vlak onder witte tekst (2,9:1, audit-P1) */
+
+  /* ---- canvas & surfaces (2 niveaus) ---- */
+  --color-mw-canvas: #f4f8fc; /* paginakleur (= --color-surface) */
+  --color-mw-surface-1: #ffffff; /* kaarten, velden */
+  --color-mw-surface-2: #e9f1f8; /* verdiepte vlakken, skeletons, wells */
+
+  /* ---- tekst ---- */
+  --color-mw-text: #0a0d1c; /* 18,1:1 op canvas */
+  --color-mw-text-muted: #46506b; /* 7,5:1 op canvas — secundaire tekst */
+  --color-mw-rose-text: #c0246a; /* toegankelijke roze-variant voor tekst/
+                                    accenten: 5,3:1 op canvas, 5,5:1 op wit */
+
+  /* ---- randen & focus ---- */
+  --color-mw-border: #d7e0ea;
+  --color-mw-border-strong: #b6c3d4;
+  --color-mw-focus: #0120ec; /* focusring = merkcobalt */
+
+  /* ---- status (AA op wit; error is rood, bewust ≠ merkroze) ---- */
+  --color-mw-success: #0c6b3d; /* 6,2:1 op canvas; wit op success 6,6:1 */
+  --color-mw-success-bg: #e3f4ea; /* success-tekst hierop: 5,8:1 */
+  --color-mw-warning: #8a5a0b; /* 5,6:1 op canvas */
+  --color-mw-warning-bg: #fbf0da; /* warning-tekst hierop: 5,2:1 */
+  --color-mw-error: #b42318; /* 6,2:1 op canvas; wit op error 6,6:1 */
+  --color-mw-error-strong: #8f1c12; /* hover/active van error-acties */
+  --color-mw-error-bg: #fdecea; /* error-tekst hierop: 5,8:1 */
+
+  /* ---- disabled (vrijgesteld van AA, wel herkenbaar) ---- */
+  --color-mw-disabled: #e4eaf2;
+  --color-mw-disabled-text: #7d8598;
+
+  /* ---- typografie-schaal (met regelhoogtes) ---- */
+  --text-mw-display: 3.25rem; /* 52px — heromomenten, serif-cijfers */
+  --text-mw-display--line-height: 1.05;
+  --text-mw-kop-1: 2.25rem; /* 36px — paginatitel */
+  --text-mw-kop-1--line-height: 1.15;
+  --text-mw-kop-2: 1.625rem; /* 26px — sectiekop */
+  --text-mw-kop-2--line-height: 1.25;
+  --text-mw-kop-3: 1.1875rem; /* 19px — kaartkop */
+  --text-mw-kop-3--line-height: 1.35;
+  --text-mw-body: 1rem; /* 16px — lopende tekst */
+  --text-mw-body--line-height: 1.6;
+  --text-mw-klein: 0.875rem; /* 14px — hints, meta */
+  --text-mw-klein--line-height: 1.5;
+  --text-mw-micro: 0.75rem; /* 12px — eyebrows, legenda (nooit lopende tekst) */
+  --text-mw-micro--line-height: 1.4;
+
+  /* ---- radius-aanvulling ---- */
+  --radius-klein: 0.5rem; /* 8px — chips-in-grid, kleine vlakken */
+
+  /* ---- blur-niveaus ---- */
+  --blur-mw-1: 8px; /* subtiel: kleine overlays */
+  --blur-mw-2: 18px; /* standaard glass */
+  --blur-mw-3: 26px; /* glass-strong, dialogen */
+
+  /* ---- schaduw-aanvulling (klein, zacht, fysisch logisch) ---- */
+  --shadow-mw-1: 0 1px 2px rgb(10 13 28 / 0.06), 0 2px 8px rgb(10 13 28 / 0.05);
+  --shadow-mw-2: 0 4px 16px rgb(10 13 28 / 0.08);
 }
 
 /* ============================================================
@@ -61,9 +130,82 @@
    (≥ 4.5:1); knoppen brand-blauw met witte tekst.
    ============================================================ */
 
+/* ============================================================
+   Niet-utility-tokens (fase 3): spacing, motion, z-index, glass,
+   iriserende highlight. Componenten verwijzen naar deze tokens,
+   nooit naar losse waardes.
+
+   Breakpoints (documentatie — Tailwind v4-defaults, geen override):
+     sm 640px · md 768px · lg 1024px · xl 1280px · 2xl 1536px.
+   Ontwerp mobiel-eerst; het werkweekgrid kantelt onder `sm`
+   (zie .wg-grid hieronder).
+   ============================================================ */
+
+:root {
+  /* ---- spacing-schaal (4px-basis) ---- */
+  --mw-space-1: 0.25rem; /* 4 */
+  --mw-space-2: 0.5rem; /* 8 */
+  --mw-space-3: 0.75rem; /* 12 */
+  --mw-space-4: 1rem; /* 16 */
+  --mw-space-5: 1.5rem; /* 24 */
+  --mw-space-6: 2rem; /* 32 */
+  --mw-space-7: 3rem; /* 48 */
+  --mw-space-8: 4rem; /* 64 */
+  --mw-space-9: 6rem; /* 96 */
+
+  /* ---- motion (bron: MOTION_SYSTEM.md) ---- */
+  --motion-instant: 80ms; /* hover, pressed, toggles */
+  --motion-fast: 160ms; /* chips, checkboxes, focus */
+  --motion-base: 240ms; /* uitklappen, fades, kaartstaten */
+  --motion-slow: 400ms; /* sheets, dialogen, score-updates */
+  --motion-hero: 700ms; /* Match Shape-morph, succes (max 1 per pagina) */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  /* ---- z-index-schaal ---- */
+  --z-nav: 40;
+  --z-dropdown: 50;
+  --z-overlay: 60;
+  --z-dialog: 70;
+  --z-toast: 80;
+  --z-tooltip: 90;
+
+  /* ---- glass: leesbaarheidsminimum 0.72 wit onder tekst ---- */
+  --mw-glass-bg: rgb(255 255 255 / 0.72);
+  --mw-glass-bg-strong: rgb(255 255 255 / 0.86);
+  --mw-glass-border: rgb(255 255 255 / 0.9);
+
+  /* ---- iriserende highlight: subtiel, uitsluitend decoratief
+     (dunne rand/overgang, nooit vlakvulling of tekst) ---- */
+  --mw-iris: linear-gradient(
+    110deg,
+    rgb(205 223 238 / 0) 0%,
+    rgb(237 108 165 / 0.35) 32%,
+    rgb(255 255 255 / 0.6) 50%,
+    rgb(1 32 236 / 0.22) 68%,
+    rgb(205 223 238 / 0) 100%
+  );
+}
+
+/* Reduced motion: verplaatsingen/morphs worden directe wissels of
+   korte fades (max --motion-fast); componenten gebruiken daarnaast
+   motion-reduce:transition-none. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-base: 160ms;
+    --motion-slow: 160ms;
+    --motion-hero: 160ms;
+  }
+}
+
 @layer base {
   html {
     scroll-behavior: smooth;
+    /* clip i.p.v. hidden: decoratieve orbs/vormen die buiten beeld
+       uitsteken mogen de viewport nooit horizontaal scrolbaar maken
+       (stond eerder in marketing.css; geldt sitebreed). */
+    overflow-x: clip;
   }
 
   body {
@@ -91,21 +233,35 @@
    ============================================================ */
 
 @layer components {
-  /* Frosted glass — de signatuur van elk oppervlak. */
+  /* Frosted glass — de signatuur van elk oppervlak. Leesbaarheid:
+     minimaal 0.72 wit-opaciteit onder tekst (uitlegbare transparantie,
+     VISUAL_PRINCIPLES.md §4); geen glas op glas stapelen. */
   .glass {
-    background-color: rgb(255 255 255 / 0.62);
+    background-color: var(--mw-glass-bg);
     border: 1px solid rgb(255 255 255 / 0.85);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(var(--blur-mw-2));
+    -webkit-backdrop-filter: blur(var(--blur-mw-2));
     box-shadow: var(--shadow-glass);
   }
 
   .glass-strong {
-    background-color: rgb(255 255 255 / 0.84);
+    background-color: var(--mw-glass-bg-strong);
     border: 1px solid rgb(255 255 255 / 0.95);
-    backdrop-filter: blur(26px);
-    -webkit-backdrop-filter: blur(26px);
+    backdrop-filter: blur(var(--blur-mw-3));
+    -webkit-backdrop-filter: blur(var(--blur-mw-3));
     box-shadow: var(--shadow-glass-strong);
+  }
+
+  /* Skeleton/laadvlak: statisch grijsblauw vlak; de zachte puls staat
+     achter prefers-reduced-motion (zie onderaan). */
+  .skeleton {
+    background-color: var(--color-mw-surface-2);
+    border-radius: var(--radius-klein);
+  }
+
+  /* Iriserende decoratieve highlight — dunne overgang, aria-hidden. */
+  .iris-highlight {
+    background-image: var(--mw-iris);
   }
 
   /* Dromerige gradient-orbs op de achtergrond. Altijd decoratief:
@@ -146,6 +302,106 @@
     font-style: italic;
     font-weight: 700;
     letter-spacing: -0.01em;
+  }
+}
+
+/* ============================================================
+   WeekGrid-layout (audit-P1 #3). Eén DOM, twee oriëntaties:
+   - breed (≥ 640px containerbreedte): dagen als kolommen
+     (label-kolom + 7 dagen), dagdelen als rijen;
+   - smal (< 640px): gekanteld — dagen als rijen en de drie
+     dagdelen als kolommen, zodat elke cel de volle breedte
+     benut en tap-targets ≥ 44px blijven.
+   De wissel gebeurt met container queries op .wg-wrap zodat het
+   grid ook in smalle kolommen (studio, kaarten) kantelt; de
+   basisregels hieronder zijn tegelijk de fallback voor browsers
+   zonder container queries. Plaatsing via custom properties
+   --wg-d (dag 0–6) en --wg-p (dagdeel 0–2) als inline style.
+   ============================================================ */
+
+.wg-wrap {
+  container-type: inline-size;
+}
+
+/* basis (en fallback): brede oriëntatie */
+.wg-grid {
+  display: grid;
+  gap: var(--mw-space-2);
+  grid-template-columns: auto repeat(7, minmax(0, 1fr));
+}
+
+.wg-corner {
+  grid-row: 1;
+  grid-column: 1;
+}
+
+.wg-day {
+  grid-row: 1;
+  grid-column: calc(var(--wg-d) + 2);
+  justify-content: center;
+  text-align: center;
+}
+
+.wg-part {
+  grid-row: calc(var(--wg-p) + 2);
+  grid-column: 1;
+  justify-content: flex-start;
+  text-align: left;
+  padding-right: var(--mw-space-2);
+}
+
+.wg-cell {
+  grid-row: calc(var(--wg-p) + 2);
+  grid-column: calc(var(--wg-d) + 2);
+}
+
+/* daglabels: kort op middenmaten, voluit op smal (rijlabel) en breed */
+.wg-day-lang {
+  display: none;
+}
+
+.wg-day-kort {
+  display: inline;
+}
+
+@container (min-width: 880px) {
+  .wg-day-lang {
+    display: inline;
+  }
+  .wg-day-kort {
+    display: none;
+  }
+}
+
+/* smal: gekantelde oriëntatie */
+@container (max-width: 639.98px) {
+  .wg-grid {
+    gap: var(--mw-space-1);
+    grid-template-columns: auto repeat(3, minmax(0, 1fr));
+  }
+  .wg-day {
+    grid-row: calc(var(--wg-d) + 2);
+    grid-column: 1;
+    justify-content: flex-start;
+    text-align: left;
+    padding-right: var(--mw-space-2);
+  }
+  .wg-part {
+    grid-row: 1;
+    grid-column: calc(var(--wg-p) + 2);
+    justify-content: center;
+    text-align: center;
+    padding-right: 0;
+  }
+  .wg-cell {
+    grid-row: calc(var(--wg-d) + 2);
+    grid-column: calc(var(--wg-p) + 2);
+  }
+  .wg-day-lang {
+    display: inline;
+  }
+  .wg-day-kort {
+    display: none;
   }
 }
 
@@ -225,5 +481,20 @@
   .mz-blob-b {
     animation: mz-blob-b 12s ease-in-out infinite;
     will-change: transform;
+  }
+
+  /* Skeleton-puls: zacht, geen shimmer-sweep. */
+  @keyframes mz-skeleton {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.55;
+    }
+  }
+
+  .skeleton {
+    animation: mz-skeleton 1.8s var(--ease-in-out) infinite;
   }
 }

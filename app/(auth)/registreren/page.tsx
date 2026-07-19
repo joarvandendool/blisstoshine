@@ -25,14 +25,14 @@ export default async function RegistrerenPage({
         {accountType === "praktijk" ? (
           <>
             Ben je mondzorgprofessional?{" "}
-            <Link className="font-semibold text-brand-blue underline-offset-2 hover:underline" href="/registreren?type=kandidaat">
+            <Link className="inline-block px-1 py-3.5 -my-3.5 -mx-1 font-semibold text-brand-blue underline-offset-2 hover:underline" href="/registreren?type=kandidaat">
               Maak een kandidaatprofiel
             </Link>
           </>
         ) : (
           <>
             Werf je voor een praktijk?{" "}
-            <Link className="font-semibold text-brand-blue underline-offset-2 hover:underline" href="/registreren?type=praktijk">
+            <Link className="inline-block px-1 py-3.5 -my-3.5 -mx-1 font-semibold text-brand-blue underline-offset-2 hover:underline" href="/registreren?type=praktijk">
               Start als praktijk
             </Link>
           </>
@@ -40,7 +40,7 @@ export default async function RegistrerenPage({
       </p>
       <p className="mt-2 text-center text-sm text-ink/70">
         Al een account?{" "}
-        <Link className="font-semibold text-brand-blue underline-offset-2 hover:underline" href="/inloggen">
+        <Link className="inline-block px-1 py-3.5 -my-3.5 -mx-1 font-semibold text-brand-blue underline-offset-2 hover:underline" href="/inloggen">
           Inloggen
         </Link>
       </p>

@@ -115,10 +115,13 @@ test("kandidaat Iris ziet haar openstaande uitnodiging op /kandidaat/uitnodiging
   await klik(page.getByRole("button", { name: "Inloggen" }));
   await page.waitForURL("**/kandidaat");
 
-  // Via de navigatie naar de uitnodigingenpagina.
+  // Via de navigatie naar de uitnodigingenpagina. Regex i.p.v. exact:
+  // op mobiel is de desktopnav ("Hoofdnavigatie") CSS-verborgen en dus
+  // onzichtbaar voor getByRole; daar zijn de bottom tabs
+  // ("Hoofdnavigatie (mobiel)") de zichtbare navigatie.
   await klik(
     page
-      .getByRole("navigation", { name: "Hoofdnavigatie", exact: true })
+      .getByRole("navigation", { name: /Hoofdnavigatie/ })
       .getByRole("link", { name: "Uitnodigingen" }),
   );
   await page.waitForURL("**/kandidaat/uitnodigingen");

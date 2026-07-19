@@ -57,8 +57,10 @@ const KNOP_VARIANTEN: Record<ButtonVariant, string> = {
     "glass text-ink hover:bg-white/90",
   ghost:
     "bg-transparent text-ink hover:bg-ink/5",
+  /* Statuskleur uit de mw-tokens: wit op error = 6,6:1 (AA). Bewust rood,
+     nooit merkroze — merk en status blijven gescheiden. */
   danger:
-    "bg-red-700 text-white shadow-[0_10px_30px_rgb(185_28_28/0.25)] hover:bg-red-800",
+    "bg-mw-error text-white shadow-[0_10px_30px_rgb(180_35_24/0.25)] hover:bg-mw-error-strong active:bg-mw-error-strong",
 };
 
 const KNOP_MATEN: Record<ButtonSize, string> = {
@@ -138,11 +140,12 @@ export function Chip({
       type={type}
       aria-pressed={selected}
       className={cx(
-        "inline-flex min-h-10 items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium",
-        "transition-colors duration-150 motion-reduce:transition-none",
+        "inline-flex min-h-11 items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium",
+        "transition-colors duration-(--motion-fast) motion-reduce:transition-none",
+        "disabled:pointer-events-none disabled:border-transparent disabled:bg-mw-disabled disabled:text-mw-disabled-text disabled:shadow-none",
         selected
-          ? "border border-blauw-600 bg-blauw-600 text-white shadow-(--shadow-knop-blauw)"
-          : "border border-ink/10 bg-white/70 text-ink backdrop-blur hover:bg-white",
+          ? "border border-blauw-700 bg-blauw-600 text-white shadow-(--shadow-knop-blauw) hover:bg-blauw-700"
+          : "border border-mw-border-strong bg-white/80 text-ink backdrop-blur hover:border-blauw-400 hover:bg-white",
         className,
       )}
       {...rest}
@@ -267,7 +270,7 @@ export function Field({
       >
         {label}
         {required ? (
-          <span aria-hidden="true" className="ml-0.5 text-roze-600">
+          <span aria-hidden="true" className="ml-0.5 text-mw-rose-text">
             *
           </span>
         ) : null}
@@ -277,7 +280,7 @@ export function Field({
         <p className="text-sm text-ink/70">{hint}</p>
       ) : null}
       {error ? (
-        <p role="alert" className="text-sm font-medium text-red-700">
+        <p role="alert" className="text-sm font-medium text-mw-error">
           {error}
         </p>
       ) : null}
@@ -291,7 +294,7 @@ const VELD_BASIS = cx(
   "placeholder:text-ink/50",
   "transition-colors duration-150 motion-reduce:transition-none",
   "hover:border-ink/35 focus:border-blauw-600",
-  "aria-[invalid=true]:border-red-700",
+  "aria-[invalid=true]:border-mw-error",
   "disabled:cursor-not-allowed disabled:bg-surface disabled:text-ink/60",
 );
 
@@ -398,7 +401,7 @@ export function Stat({
           <em
             className={cx(
               "font-serif italic font-bold",
-              accent === "roze" ? "text-roze-500" : "text-blauw-600",
+              accent === "roze" ? "text-mw-rose-text" : "text-blauw-600",
             )}
           >
             {suffix}
@@ -447,6 +450,109 @@ export function EmptyState({
       <h3 className="text-lg font-semibold text-ink">{title}</h3>
       {description ? (
         <p className="max-w-md text-[15px] leading-relaxed text-ink/70">
+          {description}
+        </p>
+      ) : null}
+      {action ? <div className="mt-2">{action}</div> : null}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Skeleton & LoadingState — laadstaten (audit-P2 #5)                  */
+/* ------------------------------------------------------------------ */
+
+export interface SkeletonProps {
+  /** Extra klassen voor maatvoering, bv. "h-4 w-40" of "h-24 w-full". */
+  className?: string;
+}
+
+/** Eén laadvlak. Pulseert alleen bij prefers-reduced-motion:
+ *  no-preference (zie .skeleton in globals.css); anders statisch. */
+export function Skeleton({ className }: SkeletonProps) {
+  return (
+    <div aria-hidden="true" className={cx("skeleton", className ?? "h-4 w-full")} />
+  );
+}
+
+export interface LoadingStateProps {
+  /** Toegankelijke omschrijving, bv. "Matches laden". */
+  label?: string;
+  /** Aantal skeleton-regels onder de kop (default 3). */
+  lines?: number;
+  className?: string;
+}
+
+/** Kaartvormige laadstaat: skeleton-kop + regels, met status-rol zodat
+ *  screenreaders het laden melden. */
+export function LoadingState({
+  label = "Bezig met laden",
+  lines = 3,
+  className,
+}: LoadingStateProps) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className={cx("glass flex flex-col gap-3 rounded-kaart p-6", className)}
+    >
+      <span className="sr-only">{label}…</span>
+      <Skeleton className="h-5 w-2/5" />
+      {Array.from({ length: Math.max(1, lines) }, (_, i) => (
+        <Skeleton
+          key={i}
+          className={cx("h-4", i === lines - 1 ? "w-3/5" : "w-full")}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* ErrorState — foutstaat in merkstem (audit-P2 #5)                    */
+/* ------------------------------------------------------------------ */
+
+export interface ErrorStateProps {
+  title?: string;
+  description?: ReactNode;
+  /** Herstelactie, bv. een "Probeer opnieuw"-knop. */
+  action?: ReactNode;
+  className?: string;
+}
+
+export function ErrorState({
+  title = "Er ging iets mis",
+  description = "Probeer het opnieuw. Blijft het misgaan, neem dan contact met ons op.",
+  action,
+  className,
+}: ErrorStateProps) {
+  return (
+    <div
+      role="alert"
+      className={cx(
+        "glass-strong flex flex-col items-center gap-3 rounded-kaart-lg border border-mw-error/20 px-8 py-12 text-center",
+        className,
+      )}
+    >
+      <div
+        aria-hidden="true"
+        className="flex h-12 w-12 items-center justify-center rounded-full bg-mw-error-bg text-mw-error"
+      >
+        <svg viewBox="0 0 20 20" className="h-5 w-5" aria-hidden="true" focusable="false">
+          <path
+            d="M10 3.2 17.5 16H2.5L10 3.2z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinejoin="round"
+          />
+          <path d="M10 8v3.4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <circle cx="10" cy="13.9" r="0.9" fill="currentColor" />
+        </svg>
+      </div>
+      <h3 className="text-lg font-semibold text-ink">{title}</h3>
+      {description ? (
+        <p className="max-w-md text-[15px] leading-relaxed text-mw-text-muted">
           {description}
         </p>
       ) : null}

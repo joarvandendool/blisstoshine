@@ -9,6 +9,7 @@ import {
   COMMERCIAL_EVENTS,
   ENGAGEMENT_EVENTS,
   PRACTICE_FUNNEL_EVENTS,
+  PUBLIC_EVENTS,
   isAnalyticsEventName,
 } from "@/domain/analytics";
 
@@ -53,6 +54,7 @@ describe("eventnamen", () => {
       ...COMMERCIAL_EVENTS,
       ...ENGAGEMENT_EVENTS,
       ...CAPACITY_EVENTS,
+      ...PUBLIC_EVENTS,
     ]) {
       expect(ANALYTICS_EVENTS).toContain(naam);
     }
@@ -63,7 +65,8 @@ describe("eventnamen", () => {
         PRACTICE_FUNNEL_EVENTS.length +
         COMMERCIAL_EVENTS.length +
         ENGAGEMENT_EVENTS.length +
-        CAPACITY_EVENTS.length -
+        CAPACITY_EVENTS.length +
+        PUBLIC_EVENTS.length -
         1,
     );
     expect(
@@ -76,6 +79,18 @@ describe("eventnamen", () => {
     expect(ANALYTICS_EVENTS).toContain("paywall_viewed");
     expect(ANALYTICS_EVENTS).toContain("checkout_started");
     expect(ANALYTICS_EVENTS).toContain("interview_confirmed");
+  });
+
+  it("publieke discovery-events bevatten exact de vier voorgeschreven events", () => {
+    expect(PUBLIC_EVENTS).toEqual([
+      "public_page_viewed",
+      "public_job_viewed",
+      "public_apply_clicked",
+      "public_register_clicked",
+    ]);
+    for (const naam of PUBLIC_EVENTS) {
+      expect(isAnalyticsEventName(naam)).toBe(true);
+    }
   });
 });
 
