@@ -12,3 +12,8 @@ tsconfig.tsbuildinfo
 
 # CSV-exports van de integratiepagina (tijdelijke bestanden, fase 9)
 .exports/
+# Perf-sprint: ruwe metingen, logs en sessie-cookies blijven lokaal;
+# de meetscripts zelf worden wél versioneerd.
+.perf/*
+!.perf/*.mjs
+!.perf/*.sh
