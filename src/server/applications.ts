@@ -244,22 +244,35 @@ export async function updateApplicationStatus(
   // candidate_hired opnieuw en ontstaat er een dubbele journaalregel.
   const statusGewijzigd = sollicitatie.status !== status;
 
-  const bijgewerkt = statusGewijzigd
-    ? await prisma.application.update({
-        where: { id: sollicitatie.id },
-        data: { status },
-      })
-    : await prisma.application.findUniqueOrThrow({ where: { id: sollicitatie.id } });
-
-  if (statusGewijzigd) {
-    // Journaal: statuswijziging door de praktijk.
-    await recordStatusChange(sollicitatie.vacancy.id, sollicitatie.candidateUserId, {
-      to: applicationToPipelineStatus(status),
-      actorType: "practice",
-      actorUserId: ctx.user.id,
-      reasonCode: feedback?.reasonCode,
-    });
+  if (!statusGewijzigd) {
+    return prisma.application.findUniqueOrThrow({ where: { id: sollicitatie.id } });
   }
+
+  // Race-veilige overgang: de update slaagt alleen als de status sinds het
+  // inlezen niet is veranderd. Zo kan een gelijktijdige wijziging (bv. de
+  // kandidaat trekt terug terwijl de praktijk 'gesprek' zet) de stand en het
+  // journaal niet laten divergeren — de verliezer krijgt een nette 409.
+  const overgang = await prisma.application.updateMany({
+    where: { id: sollicitatie.id, status: sollicitatie.status },
+    data: { status },
+  });
+  if (overgang.count === 0) {
+    throw new AuthzError(
+      "De status van deze sollicitatie is zojuist gewijzigd. Vernieuw de pagina en probeer opnieuw.",
+      409,
+    );
+  }
+  const bijgewerkt = await prisma.application.findUniqueOrThrow({
+    where: { id: sollicitatie.id },
+  });
+
+  // Journaal: statuswijziging door de praktijk.
+  await recordStatusChange(sollicitatie.vacancy.id, sollicitatie.candidateUserId, {
+    to: applicationToPipelineStatus(status),
+    actorType: "practice",
+    actorUserId: ctx.user.id,
+    reasonCode: feedback?.reasonCode,
+  });
 
   if (status === "rejected" && feedback) {
     await recordDecisionFeedback({
@@ -281,23 +294,21 @@ export async function updateApplicationStatus(
     candidateId: sollicitatie.candidate.candidateProfile?.id,
     context: { vacancyId: sollicitatie.vacancy.id, applicationId: sollicitatie.id },
   };
-  if (statusGewijzigd && status === "interview") {
+  if (status === "interview") {
     await track("interview_scheduled", eventBasis);
   }
-  if (statusGewijzigd && status === "hired") {
+  if (status === "hired") {
     // candidate_hired precies één keer per plaatsing. vacancy_filled wordt
     // NIET hier gevuurd: markFilled (aangeroepen door setPipelineStatus) is
     // de énige emitter, zodat het event niet dubbel telt.
     await track("candidate_hired", eventBasis);
   }
 
-  if (statusGewijzigd) {
-    await audit("application.status", "Application", sollicitatie.id, {
-      organizationId: ctx.organizationId,
-      userId: ctx.user.id,
-      meta: { van: sollicitatie.status, naar: status },
-    });
-  }
+  await audit("application.status", "Application", sollicitatie.id, {
+    organizationId: ctx.organizationId,
+    userId: ctx.user.id,
+    meta: { van: sollicitatie.status, naar: status },
+  });
 
   return bijgewerkt;
 }
@@ -322,9 +333,20 @@ export async function withdrawApplication(
     throw new AuthzError("Deze sollicitatie kan niet meer worden ingetrokken", 409);
   }
 
-  const bijgewerkt = await prisma.application.update({
-    where: { id: sollicitatie.id },
+  // Race-veilig: alleen intrekken als de status sinds het inlezen niet is
+  // veranderd (bv. de praktijk zet gelijktijdig 'aangenomen'/'afgewezen').
+  const overgang = await prisma.application.updateMany({
+    where: { id: sollicitatie.id, status: sollicitatie.status },
     data: { status: "withdrawn" },
+  });
+  if (overgang.count === 0) {
+    throw new AuthzError(
+      "De status van deze sollicitatie is zojuist gewijzigd. Vernieuw de pagina en probeer opnieuw.",
+      409,
+    );
+  }
+  const bijgewerkt = await prisma.application.findUniqueOrThrow({
+    where: { id: sollicitatie.id },
   });
 
   await recordStatusChange(sollicitatie.vacancy.id, user.id, {
