@@ -239,18 +239,27 @@ export async function updateApplicationStatus(
   });
   if (!sollicitatie) throw new AuthzError("Sollicitatie niet gevonden", 404);
 
-  const bijgewerkt = await prisma.application.update({
-    where: { id: sollicitatie.id },
-    data: { status },
-  });
+  // Idempotent: alleen bij een échte statusovergang journaliseren, analytics
+  // vuren en auditen. Zonder deze guard vuurt een herhaalde "hired"-klik
+  // candidate_hired opnieuw en ontstaat er een dubbele journaalregel.
+  const statusGewijzigd = sollicitatie.status !== status;
 
-  // Journaal: statuswijziging door de praktijk.
-  await recordStatusChange(sollicitatie.vacancy.id, sollicitatie.candidateUserId, {
-    to: applicationToPipelineStatus(status),
-    actorType: "practice",
-    actorUserId: ctx.user.id,
-    reasonCode: feedback?.reasonCode,
-  });
+  const bijgewerkt = statusGewijzigd
+    ? await prisma.application.update({
+        where: { id: sollicitatie.id },
+        data: { status },
+      })
+    : await prisma.application.findUniqueOrThrow({ where: { id: sollicitatie.id } });
+
+  if (statusGewijzigd) {
+    // Journaal: statuswijziging door de praktijk.
+    await recordStatusChange(sollicitatie.vacancy.id, sollicitatie.candidateUserId, {
+      to: applicationToPipelineStatus(status),
+      actorType: "practice",
+      actorUserId: ctx.user.id,
+      reasonCode: feedback?.reasonCode,
+    });
+  }
 
   if (status === "rejected" && feedback) {
     await recordDecisionFeedback({
@@ -272,19 +281,23 @@ export async function updateApplicationStatus(
     candidateId: sollicitatie.candidate.candidateProfile?.id,
     context: { vacancyId: sollicitatie.vacancy.id, applicationId: sollicitatie.id },
   };
-  if (status === "interview") {
+  if (statusGewijzigd && status === "interview") {
     await track("interview_scheduled", eventBasis);
   }
-  if (status === "hired") {
+  if (statusGewijzigd && status === "hired") {
+    // candidate_hired precies één keer per plaatsing. vacancy_filled wordt
+    // NIET hier gevuurd: markFilled (aangeroepen door setPipelineStatus) is
+    // de énige emitter, zodat het event niet dubbel telt.
     await track("candidate_hired", eventBasis);
-    await track("vacancy_filled", eventBasis);
   }
 
-  await audit("application.status", "Application", sollicitatie.id, {
-    organizationId: ctx.organizationId,
-    userId: ctx.user.id,
-    meta: { van: sollicitatie.status, naar: status },
-  });
+  if (statusGewijzigd) {
+    await audit("application.status", "Application", sollicitatie.id, {
+      organizationId: ctx.organizationId,
+      userId: ctx.user.id,
+      meta: { van: sollicitatie.status, naar: status },
+    });
+  }
 
   return bijgewerkt;
 }

@@ -330,22 +330,30 @@ export async function markFilled(ctx: OrgContext, id: string): Promise<VacancyWi
   vereis(ctx, "vacancy.manage");
   const vacature = await eigenVacature(ctx, id);
 
+  // vacancy_filled telt precies één keer per plaatsing: alleen bij de
+  // daadwerkelijke overgang naar "filled". Een herhaalde markFilled (of een
+  // al vervulde vacature) vuurt het event niet opnieuw — het is de énige
+  // emitter van vacancy_filled (updateApplicationStatus doet dit bewust niet).
+  const wasAlVervuld = vacature.status === "filled";
+
   const vervuld = await prisma.vacancy.update({
     where: { id: vacature.id },
     data: { status: "filled" },
     include: { location: true },
   });
 
-  await track("vacancy_filled", {
-    organizationId: ctx.organizationId,
-    locationId: vacature.locationId,
-    userId: ctx.user.id,
-    context: { vacancyId: vacature.id, role: vacature.role },
-  });
-  await audit("vacancy.fill", "Vacancy", vacature.id, {
-    organizationId: ctx.organizationId,
-    userId: ctx.user.id,
-  });
+  if (!wasAlVervuld) {
+    await track("vacancy_filled", {
+      organizationId: ctx.organizationId,
+      locationId: vacature.locationId,
+      userId: ctx.user.id,
+      context: { vacancyId: vacature.id, role: vacature.role },
+    });
+    await audit("vacancy.fill", "Vacancy", vacature.id, {
+      organizationId: ctx.organizationId,
+      userId: ctx.user.id,
+    });
+  }
 
   return vervuld;
 }
