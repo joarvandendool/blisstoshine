@@ -314,8 +314,10 @@ describe("matching-engine — harde mismatches", () => {
     expect(
       resultaat.hardMismatchReasons.some((r) => r.message.includes("contractvorm")),
     ).toBe(true);
-    // Informatieve categoriescore blijft berekend (urenoverlap telt nog mee).
-    expect(resultaat.categoryScores.employment).toBe(60);
+    // Informatieve categoriescore blijft berekend: urenoverlap (0,5) telt nog
+    // mee, contractvorm-overlap is 0, beloning valt neutraal uit (0,6 × 0,25)
+    // omdat er geen gedeelde contractvorm is → 50 + 0 + 15 = 65 (v1.1.0).
+    expect(resultaat.categoryScores.employment).toBe(65);
   });
 
   it("markeert een verkeerde functie als ineligible", () => {
@@ -427,12 +429,12 @@ describe("matching-engine — robuustheid en determinisme", () => {
     );
   });
 
-  it("gebruikt algorithmVersion 1.0.0 en laat opportunities leeg", () => {
-    expect(ALGORITHM_VERSION).toBe("1.0.0");
-    expect(MATCHING_CONFIG.algorithmVersion).toBe("1.0.0");
+  it("gebruikt algorithmVersion 1.1.0 en laat opportunities leeg", () => {
+    expect(ALGORITHM_VERSION).toBe("1.1.0");
+    expect(MATCHING_CONFIG.algorithmVersion).toBe("1.1.0");
 
     const resultaat = computeMatch(maakKandidaat(), maakVacature());
-    expect(resultaat.algorithmVersion).toBe("1.0.0");
+    expect(resultaat.algorithmVersion).toBe("1.1.0");
     expect(resultaat.opportunities).toEqual([]);
   });
 
@@ -454,5 +456,94 @@ describe("matching-engine — robuustheid en determinisme", () => {
 
     expect(resultaat.summary).toMatch(/^\d+% match — /);
     expect(resultaat.summary).toContain("dinsdag en donderdag sluiten volledig aan");
+  });
+});
+
+describe("matching-engine — beloning (zzp-omzetpercentage / loondienst-salaris)", () => {
+  // Vaste opzet: uren én contractvorm sluiten volledig aan, zodat alleen de
+  // beloning de dienstverbandscore stuurt. employment = uren 0,5 + contract
+  // 0,25 + beloning 0,25 (× beloningratio), afgerond (v1.1.0).
+  const zzpKandidaat = (revenueShareMin: number | null) =>
+    maakKandidaat({ contractTypes: ["zzp"], revenueShareMin });
+  const zzpVacature = (revenueShareMax: number | null) =>
+    maakVacature({ contractTypes: ["zzp"], revenueShareMax });
+
+  // Tabelgestuurde grenswaarden: omzetpercentage is een geheel getal 0–100,
+  // nooit een fractie. bod ≥ wens → volledig; bod < wens → naar rato.
+  const zzpGevallen: Array<{
+    naam: string;
+    wens: number;
+    bod: number;
+    employment: number;
+    tekort: boolean;
+  }> = [
+    { naam: "bod boven wens (60 ≥ 50)", wens: 50, bod: 60, employment: 100, tekort: false },
+    { naam: "bod gelijk aan wens (55 = 55)", wens: 55, bod: 55, employment: 100, tekort: false },
+    { naam: "bod net onder wens (54 < 55)", wens: 55, bod: 54, employment: 100 - Math.round((1 - 54 / 55) * 25), tekort: true },
+    { naam: "bod ruim onder wens (40 < 55)", wens: 55, bod: 40, employment: Math.round((0.5 + 0.25 + (40 / 55) * 0.25) * 100), tekort: true },
+    { naam: "bod nul (0 < 55)", wens: 55, bod: 0, employment: Math.round((0.5 + 0.25) * 100), tekort: true },
+  ];
+
+  for (const g of zzpGevallen) {
+    it(`zzp: ${g.naam}`, () => {
+      const resultaat = computeMatch(zzpKandidaat(g.wens), zzpVacature(g.bod));
+      expect(resultaat.eligible).toBe(true);
+      expect(resultaat.categoryScores.employment).toBe(g.employment);
+      if (g.tekort) {
+        expect(resultaat.attentionPoints.some((r) => r.code === "beloning_onder_wens")).toBe(true);
+        expect(resultaat.strengths.some((r) => r.code === "beloning_sluit_aan")).toBe(false);
+      } else {
+        expect(resultaat.strengths.some((r) => r.code === "beloning_sluit_aan")).toBe(true);
+        expect(resultaat.attentionPoints.some((r) => r.code === "beloning_onder_wens")).toBe(false);
+      }
+    });
+  }
+
+  it("zzp: percentage wordt als geheel getal behandeld, niet als fractie", () => {
+    // Een kandidaat die 55(%) wenst en een praktijk die 40(%) biedt levert
+    // ratio 40/55 ≈ 0,727 — NIET 40/0,55 of iets met fracties.
+    const resultaat = computeMatch(zzpKandidaat(55), zzpVacature(40));
+    const verwacht = Math.round((0.5 + 0.25 + (40 / 55) * 0.25) * 100);
+    expect(resultaat.categoryScores.employment).toBe(verwacht);
+    expect(verwacht).toBeLessThan(94); // aantoonbaar onder een perfecte dienstverbandscore
+  });
+
+  it("loondienst: geboden salaris onder de wens verlaagt de score met aandachtspunt", () => {
+    const kandidaat = maakKandidaat({ contractTypes: ["loondienst"], salaryMin: 400000 });
+    const vacature = maakVacature({ contractTypes: ["loondienst"], salaryMax: 300000 });
+    const resultaat = computeMatch(kandidaat, vacature);
+    expect(resultaat.categoryScores.employment).toBe(
+      Math.round((0.5 + 0.25 + (300000 / 400000) * 0.25) * 100),
+    );
+    expect(resultaat.attentionPoints.some((r) => r.code === "beloning_onder_wens")).toBe(true);
+  });
+
+  it("loondienst: passend salaris is een sterk punt", () => {
+    const kandidaat = maakKandidaat({ contractTypes: ["loondienst"], salaryMin: 300000 });
+    const vacature = maakVacature({ contractTypes: ["loondienst"], salaryMax: 350000 });
+    const resultaat = computeMatch(kandidaat, vacature);
+    expect(resultaat.categoryScores.employment).toBe(100);
+    expect(resultaat.strengths.some((r) => r.code === "beloning_sluit_aan")).toBe(true);
+  });
+
+  it("ontbrekende beloningsgegevens vallen neutraal uit (geen straf, geen signaal)", () => {
+    const kandidaat = maakKandidaat({ contractTypes: ["loondienst"], salaryMin: null });
+    const vacature = maakVacature({ contractTypes: ["loondienst"], salaryMax: null });
+    const resultaat = computeMatch(kandidaat, vacature);
+    // uren 0,5 + contract 0,25 + neutrale beloning 0,6×0,25 = 0,90 → 90
+    expect(resultaat.categoryScores.employment).toBe(90);
+    expect(resultaat.attentionPoints.some((r) => r.code === "beloning_onder_wens")).toBe(false);
+    expect(resultaat.strengths.some((r) => r.code === "beloning_sluit_aan")).toBe(false);
+  });
+
+  it("zzp-wens met loondienst-bod: geen gedeelde vorm → beloning neutraal", () => {
+    // Kandidaat wil zzp (55%), vacature biedt alleen loondienst → contract is
+    // een harde mismatch; de beloning wordt niet vergeleken over vormen heen.
+    const resultaat = computeMatch(
+      maakKandidaat({ contractTypes: ["zzp"], revenueShareMin: 55 }),
+      maakVacature({ contractTypes: ["loondienst"], salaryMax: 300000 }),
+    );
+    expect(resultaat.eligible).toBe(false); // harde contractmismatch
+    expect(resultaat.attentionPoints.some((r) => r.code === "beloning_onder_wens")).toBe(false);
   });
 });

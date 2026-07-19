@@ -4,7 +4,18 @@ De matching-engine is het kernactief van het platform. Governance-principes:
 deterministisch, geversioneerd, uitlegbaar, en géén stille wijzigingen —
 elke beslissing is achteraf herleidbaar tot algoritmeversie + invoer.
 
-## Actieve versie: v1 (1.0.0)
+## Actieve versie: v1 (1.1.0)
+
+> **Wijziging 1.1.0 (functional-excellence):** beloning telt mee binnen de
+> categorie dienstverband. Voor zzp geldt het omzetpercentage (geheel getal
+> 0–100, nooit een fractie of uurtarief), voor loondienst het maandsalaris.
+> De regel is: dekt het geboden maximum de gewenste ondergrens? Zo ja →
+> volledig; zo nee → naar rato (`geboden / gewenst`). Beloning is een **zacht**
+> signaal: een te laag bod verlaagt de score en levert het aandachtspunt
+> `beloning_onder_wens` op, maar sluit nóóit hard uit; een passend bod geeft
+> `beloning_sluit_aan`. Ontbrekende beloningsgegevens vallen neutraal uit
+> (score 60) en drukken de match niet omlaag. Grondslag: de bestaande
+> feedback-redencode `salaris_tarief` en de zzp-omzetpercentage-productregel.
 
 Engine: `src/domain/matching/engine.ts` (pure domeinmodule, geen DB/React,
 geen `Date.now()`/`Math.random()` — determinisme getest in
@@ -17,7 +28,7 @@ geen `Date.now()`/`Math.random()` — determinisme getest in
 | Beschikbaarheid (dagen/dagdelen) | 0,35 |
 | Functie en ervaring | 0,15 |
 | Reistijd | 0,15 |
-| Dienstverband (uren 60% / contractvorm 40%) | 0,10 |
+| Dienstverband (uren 50% / contractvorm 25% / beloning 25%) | 0,10 |
 | Apparatuur en software (incl. ontwikkelmatch) | 0,10 |
 | Specialisaties | 0,10 |
 | Werkplekvoorkeuren | 0,05 |

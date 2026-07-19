@@ -430,6 +430,8 @@ export function vacancyToMatchVacancy(
     hoursMin: vacancy.hoursMin,
     hoursMax: vacancy.hoursMax,
     contractTypes: vacancy.contractTypes,
+    salaryMax: vacancy.salaryMax,
+    revenueShareMax: vacancy.revenueShareMax,
     startBy: vacancy.startBy,
     startByHard: vacancy.startByHard,
     criteria: castCriteria(vacancy.criteria),

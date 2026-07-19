@@ -224,10 +224,60 @@ function beoordeelReizen(candidate: MatchCandidate, vacancy: MatchVacancy): Reis
 // Dienstverband
 // ---------------------------------------------------------------------------
 
+interface BeloningUitkomst {
+  /** 0–1: hoe goed het bod de wens dekt (1 = volledig gedekt). */
+  ratio: number;
+  /** True zodra er aan één gedeelde contractvorm beloningsgegevens zijn. */
+  dataAanwezig: boolean;
+  /** True wanneer het bod onder de wens ligt (aandachtspunt). */
+  tekort: boolean;
+  /** Welke contractvorm het gunstigst uitpakte, voor de uitleg. */
+  vorm: "zzp" | "loondienst" | null;
+}
+
+/**
+ * Beoordeelt de beloning per gedeelde contractvorm (v1.1.0). Voor zzp geldt het
+ * omzetpercentage (geheel getal 0–100, nooit een fractie of uurtarief), voor
+ * loondienst het maandsalaris. De regel is telkens: dekt het geboden maximum de
+ * gewenste ondergrens? Zo ja → 1; zo nee → geboden/gewenst (naar rato). De
+ * gunstigste haalbare vorm telt. Zonder gegevens aan beide kanten: neutraal,
+ * geen straf en geen aandachtspunt (onbekend ≠ mismatch).
+ */
+function beoordeelBeloning(
+  candidate: MatchCandidate,
+  vacancy: MatchVacancy,
+  gedeeldeContractvormen: string[],
+): BeloningUitkomst {
+  const opties: { ratio: number; vorm: "zzp" | "loondienst" }[] = [];
+
+  if (gedeeldeContractvormen.includes("zzp")) {
+    const wens = candidate.revenueShareMin;
+    const bod = vacancy.revenueShareMax;
+    if (wens != null && bod != null) {
+      opties.push({ ratio: wens <= 0 ? 1 : clamp01(bod / wens), vorm: "zzp" });
+    }
+  }
+  if (gedeeldeContractvormen.includes("loondienst")) {
+    const wens = candidate.salaryMin;
+    const bod = vacancy.salaryMax;
+    if (wens != null && bod != null) {
+      opties.push({ ratio: wens <= 0 ? 1 : clamp01(bod / wens), vorm: "loondienst" });
+    }
+  }
+
+  if (opties.length === 0) {
+    return { ratio: NEUTRAL_SCORE / 100, dataAanwezig: false, tekort: false, vorm: null };
+  }
+  const beste = opties.reduce((a, b) => (b.ratio > a.ratio ? b : a));
+  // Kleine marge zodat afrondingsruis geen vals aandachtspunt oplevert.
+  return { ratio: beste.ratio, dataAanwezig: true, tekort: beste.ratio < 0.999, vorm: beste.vorm };
+}
+
 interface DienstverbandUitkomst {
   score: number;
   gedeeldeContractvormen: string[];
   contractDataAanwezig: boolean;
+  beloning: BeloningUitkomst;
 }
 
 function beoordeelDienstverband(
@@ -262,8 +312,14 @@ function beoordeelDienstverband(
     ? clamp01(gedeeld.length / Math.min(kandidaatVormen.length, vacatureVormen.length))
     : NEUTRAL_SCORE / 100;
 
-  const score = (urenRatio * EMPLOYMENT_WEIGHTS.hours + contractRatio * EMPLOYMENT_WEIGHTS.contract) * 100;
-  return { score, gedeeldeContractvormen: gedeeld, contractDataAanwezig };
+  const beloning = beoordeelBeloning(candidate, vacancy, gedeeld);
+
+  const score =
+    (urenRatio * EMPLOYMENT_WEIGHTS.hours +
+      contractRatio * EMPLOYMENT_WEIGHTS.contract +
+      beloning.ratio * EMPLOYMENT_WEIGHTS.compensation) *
+    100;
+  return { score, gedeeldeContractvormen: gedeeld, contractDataAanwezig, beloning };
 }
 
 // ---------------------------------------------------------------------------
@@ -678,6 +734,32 @@ export function computeMatch(candidate: MatchCandidate, vacancy: MatchVacancy): 
         code: "reistijd_ruim_binnen_maximum",
         category: "travel",
         message: `Geschatte reistijd van ongeveer ${minuten} minuten valt ruim binnen de maximale ${candidate.maxTravelMinutes} minuten.`,
+      });
+    }
+  }
+
+  // Beloning: zacht signaal binnen dienstverband (v1.1.0). Een te laag bod
+  // drukt de score en levert een aandachtspunt op; een passend bod is een
+  // sterk punt. Bewust kwalitatief geformuleerd — geen exacte bedragen/
+  // percentages in de uitleg.
+  if (dienstverband.beloning.dataAanwezig) {
+    if (dienstverband.beloning.tekort) {
+      attentionPoints.push({
+        code: "beloning_onder_wens",
+        category: "employment",
+        message:
+          dienstverband.beloning.vorm === "zzp"
+            ? "Het geboden omzetpercentage ligt onder het percentage dat de kandidaat wenst — bespreekbaar."
+            : "Het geboden salaris ligt onder de salariswens van de kandidaat — bespreekbaar.",
+      });
+    } else {
+      strengths.push({
+        code: "beloning_sluit_aan",
+        category: "employment",
+        message:
+          dienstverband.beloning.vorm === "zzp"
+            ? "Het geboden omzetpercentage sluit aan bij de wens van de kandidaat."
+            : "Het geboden salaris sluit aan bij de wens van de kandidaat.",
       });
     }
   }
