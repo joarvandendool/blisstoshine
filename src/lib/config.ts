@@ -50,3 +50,10 @@ export const TALENT_RADAR_MIN_GROUP = 5;
  * defensieve terugval mocht het trialplan ooit geen trialDays definiëren.
  */
 export const TRIAL_DAYS: number = getPlanVersion("trial").trialDays ?? 14;
+
+/**
+ * Geldigheidsduur van een uitnodiging in dagen. Na deze termijn kan een
+ * kandidaat de uitnodiging niet meer accepteren (status wordt dan bij het
+ * beantwoorden alsnog op "expired" gezet).
+ */
+export const INVITATION_TTL_DAYS = 30;

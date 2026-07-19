@@ -326,6 +326,9 @@ model Invitation {
   matchSnapshotId String?
   matchSnapshot   MatchSnapshot?   @relation(fields: [matchSnapshotId], references: [id])
   createdAt       DateTime         @default(now())
+  // Uiterste geldigheid; na dit moment kan de uitnodiging niet meer worden
+  // geaccepteerd (afgedwongen in respondToInvitation).
+  expiresAt       DateTime?
 
   @@unique([vacancyId, candidateUserId])
   @@index([candidateUserId])
