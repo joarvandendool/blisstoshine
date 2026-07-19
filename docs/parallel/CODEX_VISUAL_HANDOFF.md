@@ -38,9 +38,9 @@ wisselt alleen de adapter-implementatie.
 - [ ] Fase 2: bronmateriaal + creatief concept "Precision in flow"
 - [ ] Fase 3: designsysteem + /design-system
 - [ ] Fase 4: originele Match Shape
-- [ ] Fase 5: publieke homepage
-- [ ] Fase 6: openbare vacatures
-- [ ] Fase 7: openbare praktijkpagina's
+- [x] Fase 5: publieke homepage (adapter `src/public-site/data/*`, PublicShell)
+- [x] Fase 6: openbare vacatures (/vacatures + /vacatures/[slug], fixtures-bron)
+- [x] Fase 7: openbare praktijkpagina's (/praktijken/[slug], consent-vlag)
 - [ ] Fase 8: publieke kennislaag
 - [ ] Fase 9: traditionele SEO
 - [ ] Fase 10: AI-discoverability

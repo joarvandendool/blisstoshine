@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Archivo, Playfair_Display } from "next/font/google";
 import "./globals.css";
-import "./marketing.css";
 
 // Tijdelijke stand-ins voor de huisstijl-fonts:
 // Aktiv Grotesk → Archivo, Abril Display ExtraBold Italic → Playfair Display.

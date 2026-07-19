@@ -202,6 +202,10 @@
 @layer base {
   html {
     scroll-behavior: smooth;
+    /* clip i.p.v. hidden: decoratieve orbs/vormen die buiten beeld
+       uitsteken mogen de viewport nooit horizontaal scrolbaar maken
+       (stond eerder in marketing.css; geldt sitebreed). */
+    overflow-x: clip;
   }
 
   body {

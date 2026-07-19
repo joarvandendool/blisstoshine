@@ -305,8 +305,18 @@ export function WeekGrid(props: WeekGridProps) {
       aria-label="Werkweek: dagen en dagdelen"
       className={cx("wg-wrap w-full", className)}
     >
-      {/* Legenda vóór het grid: betekenis eerst, dan interactie. */}
-      {!compact ? <Legenda mode={props.mode} /> : null}
+      {/* Legenda vóór het grid: betekenis eerst, dan interactie.
+          Readonly volgt de variant: een vacatureweergave toont de
+          vacature-legenda (Nodig/Gewenst), niet de kandidaat-legenda. */}
+      {!compact ? (
+        <Legenda
+          mode={
+            props.mode === "readonly" && props.variant === "vacancy"
+              ? "vacancy"
+              : props.mode
+          }
+        />
+      ) : null}
 
       <div className="wg-grid">
         {/* hoek + daglabels; op smalle containers worden dit rijlabels (CSS) */}
