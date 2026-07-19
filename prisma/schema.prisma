@@ -392,6 +392,10 @@ model Subscription {
   scheduledPlanVersionId String?
   scheduledChangeAt      DateTime?
   graceUntil             DateTime?
+  // Tijdstip (bij de provider) van het laatst verwerkte betaalstatus-event.
+  // Voorkomt dat een ouder, later aankomend webhook-event een nieuwere
+  // status terugdraait (out-of-order-bescherming).
+  lastBillingEventAt     DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 

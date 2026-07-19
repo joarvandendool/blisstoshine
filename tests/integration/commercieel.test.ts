@@ -483,4 +483,39 @@ describe("inkomende webhooks", () => {
     expect(onbekend.processed).toBe(false);
     expect(onbekend.status).toBe("genegeerd");
   });
+
+  it("draait een geldige actieve status niet terug door een ouder (out-of-order) event", async () => {
+    const { orgId } = await nieuweOrgMetPlan(
+      "ordering@commercieel.nl",
+      "Praktijk Ordering",
+      "growth",
+    );
+
+    const t1 = new Date("2026-06-01T10:00:00.000Z");
+    const t2 = new Date("2026-06-01T12:00:00.000Z");
+
+    // Nieuwer event (t2) wordt verwerkt: abonnement actief.
+    const succes = await simulateLocalPaymentEvent(
+      orgId,
+      "payment_succeeded",
+      "evt_ordering_succeeded",
+      t2,
+    );
+    expect(succes.processed).toBe(true);
+    expect((await huidigAbonnement(orgId)).status).toBe("active");
+
+    // Ouder, later aankomend payment_failed (t1 < t2) mag NIET terugdraaien.
+    const ouder = await simulateLocalPaymentEvent(
+      orgId,
+      "payment_failed",
+      "evt_ordering_failed_old",
+      t1,
+    );
+    expect(ouder.processed).toBe(false);
+    expect(ouder.status).toBe("genegeerd");
+
+    const sub = await huidigAbonnement(orgId);
+    expect(sub.status).toBe("active");
+    expect(sub.graceUntil).toBeNull();
+  });
 });

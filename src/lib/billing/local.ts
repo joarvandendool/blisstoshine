@@ -327,11 +327,15 @@ export async function simulateLocalPaymentEvent(
   orgId: string,
   type: "payment_failed" | "payment_succeeded",
   externalId?: string,
+  occurredAt?: Date,
 ): Promise<InboundWebhookOutcome> {
   return processInboundWebhook(
     PROVIDER,
     externalId ?? `evt_local_${randomUUID().replaceAll("-", "")}`,
     type,
-    { organizationId: orgId },
+    {
+      organizationId: orgId,
+      ...(occurredAt ? { occurredAt: occurredAt.toISOString() } : {}),
+    },
   );
 }
