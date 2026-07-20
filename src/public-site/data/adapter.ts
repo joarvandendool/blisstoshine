@@ -1,59 +1,49 @@
-// Data-adapter voor de openbare site (Workstream B, fase 5–7).
+// Data-adapter voor de openbare site.
 //
 // De publieke pagina's (/, /vacatures/**, /praktijken/**) praten uitsluitend
-// met de PublicDataSource-interface uit types.ts — nooit met Prisma of
-// domeinservices (backend-eigendom, zie docs/parallel/CODEX_VISUAL_HANDOFF.md).
+// met de PublicDataSource-interface uit types.ts — nooit rechtstreeks met
+// Prisma of domeinservices.
 //
-// Twee implementaties:
-//   1. FixtureDataSource — development-fixtures (fixtures.ts, duidelijk
-//      gemarkeerd als fictief). Dit is de DEFAULT zolang de public
-//      read-model-API's (/api/public/v1/*, branch claude/scale-core) op
-//      deze branch nog 404 geven.
-//   2. HttpDataSource — roept /api/public/v1/* aan met fetch + revalidate.
-//      Werkt zodra de backend-branch geïntegreerd is.
-//
-// Selectie via env: PUBLIC_DATA_SOURCE=fixtures | http (default: fixtures).
-// Voor http kan PUBLIC_API_BASE_URL de absolute basis-URL zetten (server-side
-// fetch heeft een absolute URL nodig); default http://localhost:3000.
+// Drie implementaties:
+//   1. DirectDataSource (DEFAULT) — échte databasegegevens, in-process via
+//      de site-datalaag (src/server/public/site-queries.ts). Geen self-HTTP:
+//      op Vercel draait de pagina-render in dezelfde deployment als de
+//      /api/public/v1-routes, en een fetch naar de eigen preview-URL strandt
+//      daar op Deployment Protection (401) en kost sowieso een extra
+//      netwerkronde. In-process is dus zowel correcter als sneller; de
+//      HTTP-API blijft bestaan voor externe afnemers.
+//   2. FixtureDataSource — development-fixtures (fixtures.ts, duidelijk
+//      gemarkeerd als fictief). Alleen expliciet voor tests/demo's:
+//      PUBLIC_DATA_SOURCE=fixtures (zo draait de Playwright-suite, zodat de
+//      visuele baselines stabiel blijven).
+//   3. HttpDataSource — roept /api/public/v1/* aan en mapt de API-vormen
+//      naar het frontend-contract. Voor de situatie waarin de site en de
+//      API gescheiden draaien: PUBLIC_DATA_SOURCE=http, met
+//      PUBLIC_API_BASE_URL als absolute basis (default http://localhost:3000;
+//      op Vercel valt hij terug op https://$VERCEL_URL).
 
-import {
-  CONTRACT_TYPES,
-  DAYPARTS,
-  EQUIPMENT,
-  ROLES,
-  SOFTWARE,
-  SPECIALIZATIONS,
-  WEEKDAYS,
-  label,
-} from "@/domain/taxonomy";
+import { naarSiteJobView, naarSitePracticeView } from "@/server/public/site-queries";
+import type {
+  PublicJobView as ApiJobView,
+  PublicPracticeView as ApiPracticeView,
+  PublicTaxonomyView as ApiTaxonomyView,
+} from "@/server/public/read-models";
+import { DirectDataSource } from "./direct";
 import { FIXTURE_JOBS, FIXTURE_PRACTICES } from "./fixtures";
+import { taxonomieView } from "./taxonomie";
 import type {
   PublicDataSource,
   PublicJobFilters,
   PublicJobSearchResult,
   PublicJobView,
   PublicPracticeView,
+  PublicTag,
   PublicTaxonomyView,
 } from "./types";
 
 export const JOBS_PAGE_SIZE = 6;
 
-/* ------------------------- taxonomie (gedeeld) ------------------------- */
-
-function taxonomieView(): PublicTaxonomyView {
-  const naarTags = (keys: readonly string[]) =>
-    keys.map((key) => ({ key, label: label(key) }));
-  return {
-    roles: naarTags(ROLES),
-    // Stage is (nog) geen publieke contractvorm in de zoekfilters.
-    employmentTypes: naarTags(CONTRACT_TYPES.filter((c) => c !== "stage")),
-    equipment: naarTags(EQUIPMENT),
-    software: naarTags(SOFTWARE),
-    specializations: naarTags(SPECIALIZATIONS),
-    days: naarTags(WEEKDAYS),
-    dayparts: naarTags(DAYPARTS),
-  };
-}
+export { DirectDataSource } from "./direct";
 
 /* --------------------------- FixtureDataSource -------------------------- */
 
@@ -127,8 +117,7 @@ export class FixtureDataSource implements PublicDataSource {
   async getPractice(slug: string): Promise<PublicPracticeView | null> {
     const praktijk = FIXTURE_PRACTICES.find((p) => p.slug === slug) ?? null;
     // Consentregel: praktijken zonder publicatie-toestemming bestaan publiek
-    // niet. (Het echte consentmechanisme is backend-eigendom; de http-bron
-    // levert überhaupt alleen praktijken mét consent uit.)
+    // niet — dezelfde regel als in de echte datalaag.
     if (!praktijk || !praktijk.practiceConsent) return null;
     return praktijk;
   }
@@ -162,24 +151,48 @@ function filtersNaarQuery(filters: PublicJobFilters, page: number): string {
   return q.toString();
 }
 
+/** API-antwoord van GET /jobs (backend-vormen + paginering). */
+interface ApiJobsResult {
+  items: ApiJobView[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages?: number;
+}
+
+/** Basis-URL voor http-modus: env → Vercel-URL → localhost. */
+function httpBaseUrl(): string {
+  if (process.env.PUBLIC_API_BASE_URL) return process.env.PUBLIC_API_BASE_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "http://localhost:3000";
+}
+
 /**
- * Read-model-implementatie: /api/public/v1/* (branch claude/scale-core).
- * Fetch met ISR-revalidate; 404 → null zodat pagina's hun eigen
- * not-found-afhandeling doen.
+ * Read-model-implementatie over HTTP: /api/public/v1/*. Fetch met
+ * ISR-revalidate; 404 → null zodat pagina's hun eigen not-found-afhandeling
+ * doen; 410 (gesloten vacature) levert wél een body met status "closed".
+ * De API-vormen (src/server/public/read-models.ts) worden hier naar het
+ * frontend-contract gemapt met dezelfde mappers als de DirectDataSource.
  */
 export class HttpDataSource implements PublicDataSource {
   constructor(
-    private readonly baseUrl: string = process.env.PUBLIC_API_BASE_URL ??
-      "http://localhost:3000",
+    private readonly baseUrl: string = httpBaseUrl(),
     private readonly revalidateSeconds: number = 300,
   ) {}
 
-  private async haalOp<T>(pad: string): Promise<T | null> {
+  private async haalOp<T>(
+    pad: string,
+    opts: { accepteerGone?: boolean } = {},
+  ): Promise<T | null> {
     const res = await fetch(`${this.baseUrl}/api/public/v1${pad}`, {
       next: { revalidate: this.revalidateSeconds },
       headers: { accept: "application/json" },
     });
     if (res.status === 404) return null;
+    // 410 Gone: gesloten vacature mét volledige body (vervuld-staat).
+    if (res.status === 410 && opts.accepteerGone) {
+      return (await res.json()) as T;
+    }
     if (!res.ok) {
       throw new Error(
         `Public read-model gaf ${res.status} voor ${pad} — controleer de backend-integratie of zet PUBLIC_DATA_SOURCE=fixtures.`,
@@ -192,54 +205,83 @@ export class HttpDataSource implements PublicDataSource {
     filters: PublicJobFilters,
     page: number,
   ): Promise<PublicJobSearchResult> {
-    const resultaat = await this.haalOp<PublicJobSearchResult>(
+    const resultaat = await this.haalOp<ApiJobsResult>(
       `/jobs?${filtersNaarQuery(filters, page)}`,
     );
-    return (
-      resultaat ?? {
-        items: [],
-        total: 0,
-        page: 1,
-        pageSize: JOBS_PAGE_SIZE,
-        totalPages: 1,
-      }
-    );
+    if (!resultaat) {
+      return { items: [], total: 0, page: 1, pageSize: JOBS_PAGE_SIZE, totalPages: 1 };
+    }
+    return {
+      items: resultaat.items.map(naarSiteJobView),
+      total: resultaat.total,
+      page: resultaat.page,
+      pageSize: resultaat.pageSize,
+      // totalPages afleiden wanneer de API hem (nog) niet levert.
+      totalPages:
+        resultaat.totalPages ??
+        Math.max(1, Math.ceil(resultaat.total / Math.max(1, resultaat.pageSize))),
+    };
   }
 
   async getJob(idOrSlug: string): Promise<PublicJobView | null> {
-    return this.haalOp<PublicJobView>(`/jobs/${encodeURIComponent(idOrSlug)}`);
+    const job = await this.haalOp<ApiJobView>(
+      `/jobs/${encodeURIComponent(idOrSlug)}`,
+      { accepteerGone: true },
+    );
+    return job ? naarSiteJobView(job) : null;
   }
 
   async getPractice(slug: string): Promise<PublicPracticeView | null> {
-    const praktijk = await this.haalOp<PublicPracticeView>(
+    const praktijk = await this.haalOp<ApiPracticeView>(
       `/practices/${encodeURIComponent(slug)}`,
     );
     if (!praktijk || !praktijk.practiceConsent) return null;
-    return praktijk;
+    return naarSitePracticeView(praktijk);
   }
 
   async getPractices(): Promise<PublicPracticeView[]> {
-    const lijst = await this.haalOp<PublicPracticeView[]>(`/practices`);
-    return (lijst ?? []).filter((p) => p.practiceConsent);
+    const resultaat = await this.haalOp<{ items: ApiPracticeView[] }>(`/practices`);
+    return (resultaat?.items ?? [])
+      .filter((p) => p.practiceConsent)
+      .map(naarSitePracticeView);
   }
 
   async getTaxonomies(): Promise<PublicTaxonomyView> {
-    const taxonomie = await this.haalOp<PublicTaxonomyView>(`/taxonomies`);
-    // Val terug op de gedeelde taxonomie zolang het endpoint ontbreekt.
-    return taxonomie ?? taxonomieView();
+    const taxonomie = await this.haalOp<ApiTaxonomyView>(`/taxonomies`);
+    if (!taxonomie?.groups) return taxonomieView();
+    const groep = (key: string): PublicTag[] =>
+      taxonomie.groups.find((g) => g.key === key)?.values ?? [];
+    return {
+      roles: groep("roles"),
+      // Stage is (nog) geen publieke contractvorm in de zoekfilters.
+      employmentTypes: groep("contractTypes").filter((t) => t.key !== "stage"),
+      equipment: groep("equipment"),
+      software: groep("software"),
+      specializations: groep("specializations"),
+      days: groep("weekdays"),
+      dayparts: groep("dayparts"),
+    };
   }
 }
 
 /* ------------------------------- selectie ------------------------------- */
 
 /**
- * Kies de datasource via PUBLIC_DATA_SOURCE (fixtures | http).
- * Default: fixtures — de http-endpoints geven op deze branch nog 404;
- * de integratiefase zet de env om zonder verdere codewijziging.
+ * Kies de datasource via PUBLIC_DATA_SOURCE:
+ * - (onbeschikbaar/onbekend/"direct") → DirectDataSource: échte data,
+ *   in-process — de standaard;
+ * - "fixtures" → FixtureDataSource: uitsluitend expliciet voor tests en
+ *   demo's (o.a. de Playwright-baselines);
+ * - "http" → HttpDataSource: echte data via /api/public/v1/* wanneer site
+ *   en API gescheiden draaien (zie PUBLIC_API_BASE_URL).
  */
 export function getPublicDataSource(): PublicDataSource {
-  if (process.env.PUBLIC_DATA_SOURCE === "http") {
-    return new HttpDataSource();
+  switch (process.env.PUBLIC_DATA_SOURCE) {
+    case "fixtures":
+      return new FixtureDataSource();
+    case "http":
+      return new HttpDataSource();
+    default:
+      return new DirectDataSource();
   }
-  return new FixtureDataSource();
 }

@@ -117,6 +117,12 @@ beforeAll(async () => {
   locatieA = { id: a.location.id };
   // multi_location-plan: api_access aan, geen vacaturelimiet.
   await getBillingProvider().changePlan(orgA.id, "multi_location");
+  // Publicatie-consent: zonder deze vlag bestaat de praktijk publiek niet
+  // (het praktijk-endpoint geeft dan 404 — zie public-site-direct.test.ts).
+  await prisma.organization.update({
+    where: { id: orgA.id },
+    data: { publicConsent: true, publicConsentAt: new Date() },
+  });
 
   alsGebruiker(ownerB.id);
   const b = await createOrganizationWithLocation({
@@ -527,5 +533,44 @@ describe("org-endpoints (API-sleutels en scopes)", () => {
       name: "Anna Jansen",
       consent: true,
     });
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Entitlement wordt bij élk API-verzoek gecontroleerd                */
+/* ------------------------------------------------------------------ */
+
+describe("org-API: recht op api_access wordt live gecontroleerd", () => {
+  it("weigert een bestaande sleutel nadat de organisatie api_access verliest (downgrade)", async () => {
+    // Eigen, geïsoleerde organisatie zodat orgA/orgB ongemoeid blijven.
+    const owner = await maakGebruiker("owner-downgrade@test.nl", "Owner Downgrade");
+    alsGebruiker(owner.id);
+    const o = await createOrganizationWithLocation({
+      name: "Praktijk Downgrade",
+      location: {
+        name: "Downgrade Utrecht",
+        city: "Utrecht",
+        postcode: "3511 AB",
+        treatmentRooms: 2,
+      },
+    });
+    await getBillingProvider().changePlan(o.organization.id, "multi_location");
+
+    const ctx = await requireMembership(o.organization.id);
+    const sleutel = (await createApiKeyForOrg(ctx, "Integratie", ["jobs:read"])).plaintext;
+
+    // Met api_access: 200.
+    const okRes = await orgVacanciesGET(
+      verzoek("/api/public/v1/org/vacancies", { authorization: `Bearer ${sleutel}` }),
+    );
+    expect(okRes.status).toBe(200);
+
+    // Downgrade naar growth (geen api_access) → dezelfde sleutel wordt geweigerd.
+    await getBillingProvider().changePlan(o.organization.id, "growth");
+    const res = await orgVacanciesGET(
+      verzoek("/api/public/v1/org/vacancies", { authorization: `Bearer ${sleutel}` }),
+    );
+    expect(res.status).toBe(403);
+    expect((await res.json()).error.code).toBe("entitlement_required");
   });
 });

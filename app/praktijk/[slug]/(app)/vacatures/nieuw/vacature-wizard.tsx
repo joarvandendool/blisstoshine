@@ -498,6 +498,56 @@ export function VacatureWizard({ slug, locaties }: VacatureWizardProps) {
   const kopRef = useRef<HTMLHeadingElement | null>(null);
   const eersteWeergave = useRef(true);
 
+  // Wizardstand overleeft een refresh/crash (per tab), zodat ingevulde stappen
+  // niet verloren gaan én er geen tweede conceptvacature wordt aangemaakt (de
+  // vacancyId wordt hersteld). Wordt gewist bij een geslaagde publicatie.
+  const opslagSleutel = `mw_vac_wizard_${slug}`;
+  const gehydrateerd = useRef(false);
+
+  useEffect(() => {
+    try {
+      const rauw = sessionStorage.getItem(opslagSleutel);
+      if (rauw) {
+        const bewaard = JSON.parse(rauw) as {
+          waarden?: VacatureWaarden;
+          vacancyId?: string | null;
+          stapIndex?: number;
+          titelZelfAangepast?: boolean;
+        };
+        // Alleen herstellen als de bewaarde locatie nog bestaat.
+        if (
+          bewaard.waarden &&
+          locaties.some((l) => l.id === bewaard.waarden!.locationId)
+        ) {
+          setWaarden(bewaard.waarden);
+          if (typeof bewaard.vacancyId === "string") setVacancyId(bewaard.vacancyId);
+          if (typeof bewaard.stapIndex === "number") {
+            setStapIndex(Math.min(Math.max(0, bewaard.stapIndex), STAPPEN.length - 1));
+          }
+          if (typeof bewaard.titelZelfAangepast === "boolean") {
+            setTitelZelfAangepast(bewaard.titelZelfAangepast);
+          }
+        }
+      }
+    } catch {
+      // Corrupte of geblokkeerde opslag: negeren, wizard start dan schoon.
+    }
+    gehydrateerd.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!gehydrateerd.current) return;
+    try {
+      sessionStorage.setItem(
+        opslagSleutel,
+        JSON.stringify({ waarden, vacancyId, stapIndex, titelZelfAangepast }),
+      );
+    } catch {
+      // Opslag vol/geblokkeerd: negeren (best effort).
+    }
+  }, [opslagSleutel, waarden, vacancyId, stapIndex, titelZelfAangepast]);
+
   useEffect(() => {
     if (eersteWeergave.current) {
       eersteWeergave.current = false;
@@ -592,10 +642,26 @@ export function VacatureWizard({ slug, locaties }: VacatureWizardProps) {
     setLimietMelding(null);
     if (vacancyId === null) return;
     startTransition(async () => {
+      // Optimistisch wissen: bij succes navigeert de server action weg en mag
+      // de bewaarde stand niet blijven staan (zou een gepubliceerde vacature
+      // resumen). Bij een fout herstellen we hem hieronder.
+      try {
+        sessionStorage.removeItem(opslagSleutel);
+      } catch {
+        // negeren
+      }
       const res = await publiceerVacatureAction(slug, vacancyId);
       // Bij succes stuurt de server action door naar het dashboard; alleen
       // fouten bereiken deze regel.
       if (res && !res.ok) {
+        try {
+          sessionStorage.setItem(
+            opslagSleutel,
+            JSON.stringify({ waarden, vacancyId, stapIndex, titelZelfAangepast }),
+          );
+        } catch {
+          // negeren
+        }
         if (res.limietBereikt) {
           setLimietMelding(
             res.upgradeHint ? `${res.fout} ${res.upgradeHint}` : res.fout,

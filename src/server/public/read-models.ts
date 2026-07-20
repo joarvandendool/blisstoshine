@@ -144,6 +144,12 @@ export interface PublicJobView {
   software: PublicKeyLabel[];
   /** Gevraagde specialisaties uit de vacaturecriteria. */
   specializations: PublicKeyLabel[];
+  /** Praktijkcultuur van de vacature (taxonomie CULTURE), gelabeld. */
+  culture: PublicKeyLabel[];
+  /** Is er begeleiding/mentorschap voor deze rol? */
+  mentorship: boolean;
+  /** Ontwikkelmogelijkheden (taxonomie DEVELOPMENT), gelabeld. */
+  development: PublicKeyLabel[];
   /** Publicatiedatum, ISO 8601. */
   datePosted: string;
   /** Sluitingsdatum, ISO 8601; afwezig wanneer geen einddatum is gezet. */
@@ -156,57 +162,65 @@ export interface PublicJobView {
   updatedAt: string;
 }
 
-/** Compacte vacature voor lijst-/zoekresultaten. */
-export interface PublicJobSummary {
-  id: string;
-  slug: string;
-  canonicalUrl: string;
-  title: string;
-  role: PublicKeyLabel;
-  organization: PublicOrganizationSummary;
-  location: PublicLocation;
-  hoursMin?: number;
-  hoursMax?: number;
-  employmentTypes: string[];
-  salary?: PublicCompensation;
-  revenueShare?: PublicRevenueShare;
-  datePosted: string;
-  updatedAt: string;
-  status: "published";
-}
-
 /** Gepagineerd zoekresultaat van GET /api/public/v1/jobs. */
 export interface PublicJobSearchResult {
-  /** Vacaturesamenvattingen van deze pagina, gesorteerd op datePosted (nieuwste eerst). */
-  items: PublicJobSummary[];
+  /**
+   * Vacatures van deze pagina, gesorteerd op datePosted (nieuwste eerst).
+   * Sinds de site-integratie zijn dit volledige PublicJobViews (additief
+   * t.o.v. de eerdere compacte samenvatting: alle oude velden bestaan nog).
+   */
+  items: PublicJobView[];
   /** Totaal aantal treffers over alle pagina's. */
   total: number;
   /** Huidige pagina (1-based). */
   page: number;
   /** Paginagrootte (maximaal 50). */
   pageSize: number;
+  /** Totaal aantal pagina's (minimaal 1), afgeleid van total/pageSize. */
+  totalPages: number;
 }
 
-/** Publieke weergave van een praktijk(organisatie). */
+/**
+ * Publieke weergave van een praktijk(organisatie). Alleen praktijken mét
+ * publicatie-consent (Organization.publicConsent) worden uitgeleverd.
+ */
 export interface PublicPracticeView {
   /** Stabiele organisatie-slug; wijzigt nooit. */
   slug: string;
+  /** Canoniek pad op de publieke site: /praktijken/[slug]. */
+  canonicalUrl: string;
   /** Praktijknaam. */
   name: string;
+  /** Publieke omschrijving; lege string wanneer niet ingevuld. */
+  description: string;
   /** Stad van de (hoofd)locatie. */
   city: string;
   /** Provincie, afgeleid van postcode/stad. */
   region: string;
+  /** Alle locaties, grof (stad + provincie + PC4) — nooit een adres. */
+  locations: PublicLocation[];
   /** Aantal behandelkamers van de (hoofd)locatie. */
   treatmentRooms: number;
-  /** Praktijkkenmerken (cultuur/traits), gelabeld. */
+  /** Praktijkkenmerken (cultuur/traits) van de hoofdlocatie, gelabeld. */
   traits: PublicKeyLabel[];
-  /** Aanwezige apparatuur, gelabeld. */
+  /** Aanwezige apparatuur (unie over alle locaties), gelabeld. */
   equipment: PublicKeyLabel[];
-  /** Gebruikte software, gelabeld. */
+  /** Gebruikte software (unie over alle locaties), gelabeld. */
   software: PublicKeyLabel[];
-  /** Specialisaties, gelabeld. */
+  /** Specialisaties (unie over alle locaties), gelabeld. */
   specializations: PublicKeyLabel[];
+  /** Patiëntpopulatie (unie over alle locaties), gelabeld. */
+  population: PublicKeyLabel[];
+  /** Praktijkcultuur: unie van de traits over alle locaties, gelabeld. */
+  culture: PublicKeyLabel[];
+  /** Biedt minstens één gepubliceerde vacature begeleiding? */
+  mentorship: boolean;
+  /** Ontwikkelmogelijkheden (unie over gepubliceerde vacatures), gelabeld. */
+  development: PublicKeyLabel[];
+  /** Altijd true in API-uitvoer: zonder consent bestaat de praktijk publiek niet. */
+  practiceConsent: boolean;
+  /** Laatste wijziging van de organisatie, ISO 8601. */
+  updatedAt: string;
   /** Aantal op dit moment gepubliceerde vacatures. */
   openJobs: number;
 }
@@ -355,6 +369,10 @@ export function canonicalJobPath(slug: string): string {
   return `/vacatures/${slug}`;
 }
 
+export function canonicalPracticePath(slug: string): string {
+  return `/praktijken/${slug}`;
+}
+
 // ---------------------------------------------------------------------------
 // Mappers Prisma → publieke types
 // ---------------------------------------------------------------------------
@@ -394,6 +412,9 @@ export function toPublicJobView(vacancy: VacancyMetContext, slug: string): Publi
     equipment: naarKeyLabels(criteria.equipment?.values ?? []),
     software: naarKeyLabels(criteria.software?.values ?? []),
     specializations: naarKeyLabels(criteria.specializations?.values ?? []),
+    culture: naarKeyLabels(vacancy.culture),
+    mentorship: vacancy.mentorship,
+    development: naarKeyLabels(vacancy.development),
     datePosted: (vacancy.publishedAt ?? vacancy.createdAt).toISOString(),
     ...(validThrough ? { validThrough } : {}),
     status: vacancy.status === "published" ? "published" : "closed",
@@ -402,49 +423,44 @@ export function toPublicJobView(vacancy: VacancyMetContext, slug: string): Publi
   };
 }
 
-/** Vacature → compacte lijstweergave (alleen voor gepubliceerde vacatures). */
-export function toPublicJobSummary(
-  vacancy: VacancyMetContext,
-  slug: string,
-): PublicJobSummary {
-  const salary = naarSalary(vacancy);
-  const revenueShare = naarRevenueShare(vacancy);
-  return {
-    id: vacancy.id,
-    slug,
-    canonicalUrl: canonicalJobPath(slug),
-    title: vacancy.title,
-    role: { key: vacancy.role, label: label(vacancy.role) },
-    organization: { name: vacancy.organization.name, slug: vacancy.organization.slug },
-    location: naarPublicLocation(vacancy.location),
-    hoursMin: vacancy.hoursMin,
-    hoursMax: vacancy.hoursMax,
-    employmentTypes: vacancy.contractTypes,
-    ...(salary ? { salary } : {}),
-    ...(revenueShare ? { revenueShare } : {}),
-    datePosted: (vacancy.publishedAt ?? vacancy.createdAt).toISOString(),
-    updatedAt: vacancy.updatedAt.toISOString(),
-    status: "published",
-  };
+/** Geordende unie van taxonomiesleutels over meerdere bronnen. */
+function unie(...groepen: string[][]): string[] {
+  return [...new Set(groepen.flat())];
 }
 
-/** Organisatie + hoofdlocatie + aantal open vacatures → publieke praktijk. */
+/**
+ * Organisatie + locaties + gepubliceerde vacatures → publieke praktijk.
+ * De aanroeper (queries.ts) garandeert dat er consent is en dat er minstens
+ * één locatie bestaat; de hoofdlocatie is de oudste (eerste) locatie.
+ * mentorship/development worden afgeleid uit de gepubliceerde vacatures:
+ * dat zijn de enige publieke bronnen van die praktijkkenmerken.
+ */
 export function toPublicPracticeView(
   organization: Organization,
-  location: PracticeLocation,
-  openJobs: number,
+  locations: PracticeLocation[],
+  publishedVacancies: Pick<Vacancy, "mentorship" | "development">[],
 ): PublicPracticeView {
+  const hoofdlocatie = locations[0];
   return {
     slug: organization.slug,
+    canonicalUrl: canonicalPracticePath(organization.slug),
     name: organization.name,
-    city: location.city,
-    region: regionForCity(location.city),
-    treatmentRooms: location.treatmentRooms,
-    traits: naarKeyLabels(location.traits),
-    equipment: naarKeyLabels(location.equipment),
-    software: naarKeyLabels(location.software),
-    specializations: naarKeyLabels(location.specializations),
-    openJobs,
+    description: organization.publicDescription ?? "",
+    city: hoofdlocatie.city,
+    region: regionForCity(hoofdlocatie.city),
+    locations: locations.map(naarPublicLocation),
+    treatmentRooms: hoofdlocatie.treatmentRooms,
+    traits: naarKeyLabels(hoofdlocatie.traits),
+    equipment: naarKeyLabels(unie(...locations.map((l) => l.equipment))),
+    software: naarKeyLabels(unie(...locations.map((l) => l.software))),
+    specializations: naarKeyLabels(unie(...locations.map((l) => l.specializations))),
+    population: naarKeyLabels(unie(...locations.map((l) => l.patientPopulation))),
+    culture: naarKeyLabels(unie(...locations.map((l) => l.traits))),
+    mentorship: publishedVacancies.some((v) => v.mentorship),
+    development: naarKeyLabels(unie(...publishedVacancies.map((v) => v.development))),
+    practiceConsent: organization.publicConsent,
+    updatedAt: organization.updatedAt.toISOString(),
+    openJobs: publishedVacancies.length,
   };
 }
 

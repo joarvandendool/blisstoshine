@@ -323,6 +323,8 @@ export function profileToMatchCandidate(profile: CandidateProfile): MatchCandida
     hoursMin: profile.hoursMin,
     hoursMax: profile.hoursMax,
     contractTypes: profile.contractTypes,
+    salaryMin: profile.salaryMin,
+    revenueShareMin: profile.revenueShareMin,
     availableFrom: profile.availableFrom,
     availability: castAvailability(profile.availability),
     registrations: afgeleideRegistraties(profile.role, profile.experienceLevel),

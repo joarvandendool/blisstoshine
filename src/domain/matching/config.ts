@@ -6,8 +6,11 @@
 
 import type { MatchCategory } from "./types";
 
-/** Semver van het algoritme; wijzigt mee met elke inhoudelijke aanpassing. */
-export const ALGORITHM_VERSION = "1.0.0";
+// Semver van het algoritme; wijzigt mee met elke inhoudelijke aanpassing.
+// 1.1.0: beloning (zzp-omzetpercentage / loondienst-salaris) telt mee binnen
+// de categorie dienstverband als zacht signaal — een te lage vergoeding
+// verlaagt de score en levert een aandachtspunt op, maar sluit nooit hard uit.
+export const ALGORITHM_VERSION = "1.1.0";
 
 /** Gewichten per categorie — sommeren tot 1. */
 export const CATEGORY_WEIGHTS: Record<MatchCategory, number> = {
@@ -71,11 +74,30 @@ export const TRAVEL_MODEL = {
   zeroScoreFraction: 1.3,
 } as const;
 
-/** Weging binnen dienstverband: urenoverlap 60%, contractvorm-overlap 40%. */
+/**
+ * Weging binnen dienstverband (som = 1): urenoverlap 50%, contractvorm-overlap
+ * 25%, beloning 25% (v1.1.0). Beloning is het zzp-omzetpercentage of het
+ * loondienst-salaris; ontbrekende beloningsgegevens vallen terug op de
+ * neutrale score en drukken de match dus niet omlaag.
+ */
 export const EMPLOYMENT_WEIGHTS = {
-  hours: 0.6,
-  contract: 0.4,
+  hours: 0.5,
+  contract: 0.25,
+  compensation: 0.25,
 } as const;
+
+/**
+ * Registraties die definitorisch aan de functie vastzitten en die het
+ * kandidaatprofiel dus betrouwbaar draagt — alleen déze mogen een match hard
+ * uitsluiten (v1.1.0). Overige gevraagde registraties (bv. KRT, KRM,
+ * röntgenbevoegdheid) legt het profiel niet betrouwbaar vast; een verplichte
+ * registratie buiten deze set zou anders de héle kandidatenpool uitsluiten en
+ * geldt daarom als zacht signaal (aandachtspunt), niet als harde mismatch.
+ */
+export const HARD_REGISTRATIONS: readonly string[] = [
+  "big_tandarts",
+  "big_mondhygienist",
+];
 
 /**
  * Volledig configuratieobject van deze algoritmeversie — geversioneerd op te
@@ -91,6 +113,7 @@ export const MATCHING_CONFIG = {
   developmentMatchValues: DEVELOPMENT_MATCH_VALUES,
   travelModel: TRAVEL_MODEL,
   employmentWeights: EMPLOYMENT_WEIGHTS,
+  hardRegistrations: HARD_REGISTRATIONS,
 } as const;
 
 export type MatchingConfig = typeof MATCHING_CONFIG;

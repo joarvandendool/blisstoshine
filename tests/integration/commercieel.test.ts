@@ -483,4 +483,84 @@ describe("inkomende webhooks", () => {
     expect(onbekend.processed).toBe(false);
     expect(onbekend.status).toBe("genegeerd");
   });
+
+  it("draait een geldige actieve status niet terug door een ouder (out-of-order) event", async () => {
+    const { orgId } = await nieuweOrgMetPlan(
+      "ordering@commercieel.nl",
+      "Praktijk Ordering",
+      "growth",
+    );
+
+    const t1 = new Date("2026-06-01T10:00:00.000Z");
+    const t2 = new Date("2026-06-01T12:00:00.000Z");
+
+    // Nieuwer event (t2) wordt verwerkt: abonnement actief.
+    const succes = await simulateLocalPaymentEvent(
+      orgId,
+      "payment_succeeded",
+      "evt_ordering_succeeded",
+      t2,
+    );
+    expect(succes.processed).toBe(true);
+    expect((await huidigAbonnement(orgId)).status).toBe("active");
+
+    // Ouder, later aankomend payment_failed (t1 < t2) mag NIET terugdraaien.
+    const ouder = await simulateLocalPaymentEvent(
+      orgId,
+      "payment_failed",
+      "evt_ordering_failed_old",
+      t1,
+    );
+    expect(ouder.processed).toBe(false);
+    expect(ouder.status).toBe("genegeerd");
+
+    const sub = await huidigAbonnement(orgId);
+    expect(sub.status).toBe("active");
+    expect(sub.graceUntil).toBeNull();
+  });
+});
+
+describe("checkout-idempotency", () => {
+  it("staat hooguit één niet-geannuleerd abonnement per organisatie toe (directe dubbele insert faalt)", async () => {
+    const { orgId } = await nieuweOrgMetPlan(
+      "dubbel@commercieel.nl",
+      "Praktijk Dubbel",
+      "growth",
+    );
+    const bestaand = await huidigAbonnement(orgId);
+
+    // Een rauwe tweede actieve subscription-rij wordt door de partiële unieke
+    // index geweigerd (P2002).
+    await expect(
+      prisma.subscription.create({
+        data: {
+          organizationId: orgId,
+          planVersionId: bestaand.planVersionId,
+          status: "active",
+          currentPeriodStart: new Date(),
+          currentPeriodEnd: new Date(Date.now() + 30 * 86_400_000),
+        },
+      }),
+    ).rejects.toMatchObject({ code: "P2002" });
+  });
+
+  it("gelijktijdige checkout levert geen dubbel actief abonnement op", async () => {
+    const { orgId } = await nieuweOrgMetPlan(
+      "race@commercieel.nl",
+      "Praktijk Race",
+      "essential",
+    );
+    const provider = getBillingProvider();
+
+    // Twee gelijktijdige upgrades naar hetzelfde plan (dubbelklik/retry).
+    await Promise.all([
+      provider.startSubscription(orgId, "growth"),
+      provider.startSubscription(orgId, "growth"),
+    ]);
+
+    const actief = await prisma.subscription.count({
+      where: { organizationId: orgId, status: { not: "canceled" } },
+    });
+    expect(actief).toBe(1);
+  });
 });

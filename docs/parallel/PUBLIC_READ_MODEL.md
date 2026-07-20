@@ -37,7 +37,8 @@ Workstream B (Codex) de publieke vacature- en praktijkpagina's bouwt.
 |---|---|
 | `GET /api/public/v1/jobs` | Gepubliceerde vacatures, gefilterd + gepagineerd |
 | `GET /api/public/v1/jobs/[idOrSlug]` | Eén vacature op slug of ID |
-| `GET /api/public/v1/practices/[slug]` | Publieke praktijkweergave |
+| `GET /api/public/v1/practices` | Lijst van publieke praktijken (alleen mét publicatie-consent) |
+| `GET /api/public/v1/practices/[slug]` | Publieke praktijkweergave (alleen mét publicatie-consent) |
 | `GET /api/public/v1/taxonomies` | Alle taxonomiegroepen (key + label) |
 | `GET /api/public/v1/market-insights` | Geaggregeerde, privacyveilige marktcijfers |
 
@@ -81,39 +82,29 @@ Queryparameters (allemaal optioneel):
 | Parameter | Type | Betekenis |
 |---|---|---|
 | `role` | string | Taxonomie-functiesleutel, bv. `mondhygienist` |
-| `city` | string | Plaatsnaam, hoofdletterongevoelig exact, bv. `Utrecht` |
-| `region` | string | Provincie (afgeleid van de stad), bv. `Zuid-Holland` |
+| `city` | string | Plaats of regio, hoofdletterongevoelige **deelmatch** op "stad provincie" (bv. `utrecht`, `utre`, `zuid-holland`); vroeger exact — elke eerdere match blijft matchen |
+| `region` | string | Provincie (afgeleid van de stad), hoofdletterongevoelig exact, bv. `Zuid-Holland` |
+| `day` | string, herhaalbaar | Weekdag (`ma`–`zo`); bij meerdere `day`-parameters matcht een vacature alleen als hij **ál** die dagen vraagt (required óf preferred) |
+| `hoursMin` / `hoursMax` | int 0–80 | Urenrange; matcht op **overlap** met de uren van de vacature |
 | `employmentType` | string | Contractvorm: `loondienst` \| `zzp` \| `detachering` \| `stage` |
+| `equipment` / `software` / `specialization` | string | Taxonomiesleutel; matcht op de vacaturecriteria |
+| `organization` | string | Organisatie-slug: alleen vacatures van deze praktijk |
 | `updated_since` | ISO 8601 | Alleen vacatures bijgewerkt op/na dit moment (incrementele sync) |
-| `page` | int ≥ 1 | Pagina, standaard 1 |
+| `page` | int ≥ 1 | Pagina, standaard 1 (buiten bereik: lege `items`) |
 | `pageSize` | int 1–50 | Paginagrootte, standaard 20, maximum 50 |
 
-Sortering: **`datePosted` aflopend** (nieuwste eerst). Response
-(`PublicJobSearchResult`):
+Sortering: **`datePosted` aflopend** (nieuwste eerst). De items zijn sinds de
+site-integratie **volledige `PublicJobView`s** (§4) — additief: alle eerdere
+lijstvelden bestaan nog, de detailvelden (availability, requirements, tags,
+enz.) zijn erbij gekomen. Response (`PublicJobSearchResult`):
 
 ```json
 {
-  "items": [
-    {
-      "id": "cmd1x…",
-      "slug": "mondhygienist-3-dagen-utrecht-a1b2c3",
-      "canonicalUrl": "/vacatures/mondhygienist-3-dagen-utrecht-a1b2c3",
-      "title": "Mondhygiënist 3 dagen",
-      "role": { "key": "mondhygienist", "label": "Mondhygiënist" },
-      "organization": { "name": "Praktijk Alfa", "slug": "praktijk-alfa" },
-      "location": { "city": "Utrecht", "region": "Utrecht", "postcode4": "3511" },
-      "hoursMin": 16,
-      "hoursMax": 24,
-      "employmentTypes": ["loondienst"],
-      "salary": { "minCents": 320000, "maxCents": 400000, "period": "month" },
-      "datePosted": "2026-07-01T09:00:00.000Z",
-      "updatedAt": "2026-07-10T14:30:00.000Z",
-      "status": "published"
-    }
-  ],
+  "items": [ { "…": "volledige PublicJobView, zie §4" } ],
   "total": 42,
   "page": 1,
-  "pageSize": 20
+  "pageSize": 20,
+  "totalPages": 3
 }
 ```
 
@@ -149,31 +140,52 @@ Accepteert de slug **of** het interne ID. Antwoorden:
 | `equipment` | `{key, label}[]` | Apparatuur uit de vacaturecriteria |
 | `software` | `{key, label}[]` | Praktijksoftware uit de vacaturecriteria |
 | `specializations` | `{key, label}[]` | Specialisaties uit de vacaturecriteria |
+| `culture` | `{key, label}[]` | Praktijkcultuur van de vacature (taxonomie `culture`) |
+| `mentorship` | boolean | Is er begeleiding/mentorschap voor deze rol? |
+| `development` | `{key, label}[]` | Ontwikkelmogelijkheden (taxonomie `development`) |
 | `datePosted` | ISO 8601 | Publicatiedatum |
 | `validThrough` | ISO 8601? | Sluitingsdatum; afwezig wanneer geen einddatum is gezet |
 | `status` | `"published"` \| `"closed"` | Open of gesloten |
 | `directApply` | `true` | Solliciteren gebeurt direct op het platform (JSON-LD `directApply`) |
 | `updatedAt` | ISO 8601 | Laatste wijziging (voor incrementele sync) |
 
-## 5. `GET /practices/[slug]` — praktijkweergave
+## 5. `GET /practices` en `GET /practices/[slug]` — praktijken
+
+**Publicatie-consent:** een praktijk verschijnt uitsluitend publiek wanneer
+de organisatie daar expliciet toestemming voor heeft gegeven
+(`Organization.publicConsent`, met `publicConsentAt` als auditmoment).
+Zonder consent: 404 op het detail en afwezig in de lijst — de vacatures van
+zo'n praktijk blijven wél publiek (zonder praktijkpagina-link).
+
+`GET /practices` antwoordt `{ "items": PublicPracticeView[], "total": n }`,
+alfabetisch op naam.
 
 `PublicPracticeView`:
 
 | Veld | Type | Betekenis |
 |---|---|---|
 | `slug` | string | Stabiele organisatie-slug |
+| `canonicalUrl` | string | Pad op de publieke site: `/praktijken/[slug]` |
 | `name` | string | Praktijknaam |
+| `description` | string | Publieke omschrijving; lege string wanneer niet ingevuld |
 | `city` | string | Stad van de (hoofd)locatie |
 | `region` | string | Provincie (afgeleid van de stad) |
+| `locations` | `{city, region, postcode4}[]` | Alle locaties, grof (stad + PC4) |
 | `treatmentRooms` | number | Aantal behandelkamers van de (hoofd)locatie |
-| `traits` | `{key, label}[]` | Praktijkkenmerken (cultuur) |
-| `equipment` | `{key, label}[]` | Aanwezige apparatuur |
-| `software` | `{key, label}[]` | Gebruikte software |
-| `specializations` | `{key, label}[]` | Specialisaties |
+| `traits` | `{key, label}[]` | Praktijkkenmerken (cultuur) van de hoofdlocatie |
+| `equipment` | `{key, label}[]` | Aanwezige apparatuur (unie over alle locaties) |
+| `software` | `{key, label}[]` | Gebruikte software (unie over alle locaties) |
+| `specializations` | `{key, label}[]` | Specialisaties (unie over alle locaties) |
+| `population` | `{key, label}[]` | Patiëntpopulatie (unie over alle locaties) |
+| `culture` | `{key, label}[]` | Praktijkcultuur: unie van de traits over alle locaties |
+| `mentorship` | boolean | Biedt minstens één gepubliceerde vacature begeleiding? |
+| `development` | `{key, label}[]` | Ontwikkelmogelijkheden (unie over gepubliceerde vacatures) |
+| `practiceConsent` | boolean | Altijd `true` in API-uitvoer (zonder consent geen uitvoer) |
+| `updatedAt` | ISO 8601 | Laatste wijziging van de organisatie |
 | `openJobs` | number | Aantal op dit moment gepubliceerde vacatures |
 
 Geen adres, geen coördinaten, geen volledige postcode, geen leden of
-kandidaten. 404 voor onbekende of niet-actieve organisaties.
+kandidaten. 404 voor onbekende, niet-actieve of niet-consented organisaties.
 
 ## 6. `GET /taxonomies` en `GET /market-insights`
 

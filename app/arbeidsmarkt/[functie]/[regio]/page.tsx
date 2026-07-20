@@ -9,20 +9,13 @@ import {
   KennisArtikelPagina,
   kennisMetadata,
 } from "@/public-site/kennis/KennisArtikelPagina";
-import {
-  artikelenInCategorie,
-  vindArtikel,
-} from "@/public-site/kennis/artikelen";
+import { vindArtikel } from "@/public-site/kennis/artikelen";
 
-export const dynamicParams = false;
-
-export function generateStaticParams() {
-  // Slug van arbeidsmarkt-artikelen is "functie/regio".
-  return artikelenInCategorie("arbeidsmarkt").map((a) => {
-    const [functie, regio] = a.slug.split("/");
-    return { functie, regio };
-  });
-}
+// Integratiefase: dit artikel toont échte vacatures/praktijken uit de
+// PublicDataSource. Request-time renderen (i.p.v. SSG) zodat de databron
+// van de runtime-omgeving geldt en de inhoud actueel blijft; onbekende
+// slugs geven via vindArtikel gewoon 404.
+export const dynamic = "force-dynamic";
 
 interface PaginaProps {
   params: Promise<{ functie: string; regio: string }>;

@@ -57,6 +57,7 @@ const STATUS_TONEN: Record<PipelineStatus, BadgeTone> = {
   declined: "neutraal",
   rejected: "neutraal",
   withdrawn: "neutraal",
+  expired: "neutraal",
 };
 
 const ACTOR_LABELS: Record<string, string> = {

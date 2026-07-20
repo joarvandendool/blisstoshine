@@ -46,7 +46,15 @@ model Organization {
   acquisitionSource String?
   activatedAt       DateTime? // practice_activated is eenmalig
   onboardingState   Json? // autosave van de commerciële onboarding
+  // Publicatie-consent voor de openbare praktijkpagina (/praktijken/[slug]):
+  // zonder expliciete toestemming bestaat de praktijk publiek niet. Het
+  // moment van toestemming wordt vastgelegd voor de audittrail.
+  publicConsent     Boolean    @default(false)
+  publicConsentAt   DateTime?
+  // Publieke omschrijving zoals getoond op de praktijkpagina (optioneel).
+  publicDescription String?
   createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @default(now()) @updatedAt
   archivedAt        DateTime?
 
   locations       PracticeLocation[]
@@ -318,6 +326,9 @@ model Invitation {
   matchSnapshotId String?
   matchSnapshot   MatchSnapshot?   @relation(fields: [matchSnapshotId], references: [id])
   createdAt       DateTime         @default(now())
+  // Uiterste geldigheid; na dit moment kan de uitnodiging niet meer worden
+  // geaccepteerd (afgedwongen in respondToInvitation).
+  expiresAt       DateTime?
 
   @@unique([vacancyId, candidateUserId])
   @@index([candidateUserId])
@@ -384,6 +395,10 @@ model Subscription {
   scheduledPlanVersionId String?
   scheduledChangeAt      DateTime?
   graceUntil             DateTime?
+  // Tijdstip (bij de provider) van het laatst verwerkte betaalstatus-event.
+  // Voorkomt dat een ouder, later aankomend webhook-event een nieuwere
+  // status terugdraait (out-of-order-bescherming).
+  lastBillingEventAt     DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 

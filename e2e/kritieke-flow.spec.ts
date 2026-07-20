@@ -110,16 +110,23 @@ test.describe.serial("Kritieke gebruikersflow", () => {
     // Twee actoren met elk een eigen sessie, met de emulatie-instellingen
     // (viewport, mobiel) van het gekozen project.
     const use = test.info().project.use;
-    const opties = {
+    // Elke actor krijgt een eigen gesimuleerd client-IP (x-forwarded-for,
+    // uniek per run én per actor). De registratielimiet is 5 per uur per IP;
+    // zonder eigen IP's tellen alle registraties van de hele suite
+    // (desktop + mobiel + beta-flow) op één IP en loopt de laatste tegen
+    // de limiet aan. Twee actoren = twee "huishoudens", zoals in het echt.
+    const ipBasis = `10.${Math.floor(RUN / 256) % 256}.${RUN % 256}`;
+    const opties = (actor: number) => ({
       baseURL: use.baseURL,
       viewport: use.viewport,
       userAgent: use.userAgent,
       deviceScaleFactor: use.deviceScaleFactor,
       isMobile: use.isMobile,
       hasTouch: use.hasTouch,
-    };
-    kandidaatContext = await browser.newContext(opties);
-    praktijkContext = await browser.newContext(opties);
+      extraHTTPHeaders: { "x-forwarded-for": `${ipBasis}.${actor}` },
+    });
+    kandidaatContext = await browser.newContext(opties(1));
+    praktijkContext = await browser.newContext(opties(2));
     kandidaat = await kandidaatContext.newPage();
     praktijk = await praktijkContext.newPage();
   });

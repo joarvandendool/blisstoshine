@@ -356,10 +356,12 @@ function VacatureKaart({
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <LinkKnop href={`${basis}/vacatures/${vacature.id}/studio`} variant="secondary">
+          {/* Match Studio is de per-vacature detail-/beheerpagina (matches
+              bekijken, simuleren, uitnodigen). Er is bewust geen aparte
+              /vacatures/[id]-detailroute — dat zou een dode link zijn. */}
+          <LinkKnop href={`${basis}/vacatures/${vacature.id}/studio`}>
             Match Studio
           </LinkKnop>
-          <LinkKnop href={`${basis}/vacatures/${vacature.id}`}>Bekijk</LinkKnop>
         </div>
       </div>
 

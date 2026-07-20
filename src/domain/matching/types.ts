@@ -17,6 +17,10 @@ export interface MatchCandidate {
   hoursMin: number;
   hoursMax: number;
   contractTypes: string[];
+  /** Gewenste salaris-ondergrens bij loondienst (eurocenten p/m); null = onbekend. */
+  salaryMin?: number | null;
+  /** Gewenst omzetpercentage bij zzp (geheel getal 0–100); null = onbekend. */
+  revenueShareMin?: number | null;
   availableFrom: Date | null;
   availability: CandidateAvailability;
   registrations?: string[];
@@ -44,6 +48,10 @@ export interface MatchVacancy {
   hoursMin: number;
   hoursMax: number;
   contractTypes: string[];
+  /** Geboden salaris-bovengrens bij loondienst (eurocenten p/m); null = onbekend. */
+  salaryMax?: number | null;
+  /** Maximaal geboden omzetpercentage bij zzp (geheel getal 0–100); null = onbekend. */
+  revenueShareMax?: number | null;
   startBy: Date | null;
   startByHard: boolean;
   criteria: VacancyCriteria;

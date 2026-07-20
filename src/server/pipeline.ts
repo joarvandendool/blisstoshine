@@ -57,6 +57,7 @@ export const PIPELINE_STATUSES = [
   "declined",
   "rejected",
   "withdrawn",
+  "expired",
 ] as const;
 export type PipelineStatus = (typeof PIPELINE_STATUSES)[number];
 
@@ -122,6 +123,7 @@ export const PIPELINE_STATUS_LABELS: Record<PipelineStatus, string> = {
   declined: "Afgeslagen door kandidaat",
   rejected: "Afgewezen",
   withdrawn: "Teruggetrokken",
+  expired: "Verlopen",
 };
 
 // ---------------------------------------------------------------------------
@@ -803,7 +805,7 @@ function invitationToPipelineStatus(status: InvitationStatus): PipelineStatus {
     case "declined":
       return "declined";
     case "expired":
-      return "invited";
+      return "expired";
   }
 }
 

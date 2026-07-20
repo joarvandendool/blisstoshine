@@ -239,9 +239,31 @@ export async function updateApplicationStatus(
   });
   if (!sollicitatie) throw new AuthzError("Sollicitatie niet gevonden", 404);
 
-  const bijgewerkt = await prisma.application.update({
-    where: { id: sollicitatie.id },
+  // Idempotent: alleen bij een échte statusovergang journaliseren, analytics
+  // vuren en auditen. Zonder deze guard vuurt een herhaalde "hired"-klik
+  // candidate_hired opnieuw en ontstaat er een dubbele journaalregel.
+  const statusGewijzigd = sollicitatie.status !== status;
+
+  if (!statusGewijzigd) {
+    return prisma.application.findUniqueOrThrow({ where: { id: sollicitatie.id } });
+  }
+
+  // Race-veilige overgang: de update slaagt alleen als de status sinds het
+  // inlezen niet is veranderd. Zo kan een gelijktijdige wijziging (bv. de
+  // kandidaat trekt terug terwijl de praktijk 'gesprek' zet) de stand en het
+  // journaal niet laten divergeren — de verliezer krijgt een nette 409.
+  const overgang = await prisma.application.updateMany({
+    where: { id: sollicitatie.id, status: sollicitatie.status },
     data: { status },
+  });
+  if (overgang.count === 0) {
+    throw new AuthzError(
+      "De status van deze sollicitatie is zojuist gewijzigd. Vernieuw de pagina en probeer opnieuw.",
+      409,
+    );
+  }
+  const bijgewerkt = await prisma.application.findUniqueOrThrow({
+    where: { id: sollicitatie.id },
   });
 
   // Journaal: statuswijziging door de praktijk.
@@ -276,8 +298,10 @@ export async function updateApplicationStatus(
     await track("interview_scheduled", eventBasis);
   }
   if (status === "hired") {
+    // candidate_hired precies één keer per plaatsing. vacancy_filled wordt
+    // NIET hier gevuurd: markFilled (aangeroepen door setPipelineStatus) is
+    // de énige emitter, zodat het event niet dubbel telt.
     await track("candidate_hired", eventBasis);
-    await track("vacancy_filled", eventBasis);
   }
 
   await audit("application.status", "Application", sollicitatie.id, {
@@ -309,9 +333,20 @@ export async function withdrawApplication(
     throw new AuthzError("Deze sollicitatie kan niet meer worden ingetrokken", 409);
   }
 
-  const bijgewerkt = await prisma.application.update({
-    where: { id: sollicitatie.id },
+  // Race-veilig: alleen intrekken als de status sinds het inlezen niet is
+  // veranderd (bv. de praktijk zet gelijktijdig 'aangenomen'/'afgewezen').
+  const overgang = await prisma.application.updateMany({
+    where: { id: sollicitatie.id, status: sollicitatie.status },
     data: { status: "withdrawn" },
+  });
+  if (overgang.count === 0) {
+    throw new AuthzError(
+      "De status van deze sollicitatie is zojuist gewijzigd. Vernieuw de pagina en probeer opnieuw.",
+      409,
+    );
+  }
+  const bijgewerkt = await prisma.application.findUniqueOrThrow({
+    where: { id: sollicitatie.id },
   });
 
   await recordStatusChange(sollicitatie.vacancy.id, user.id, {

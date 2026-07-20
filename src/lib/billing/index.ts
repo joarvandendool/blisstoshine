@@ -644,12 +644,34 @@ export async function processInboundWebhook(
       };
     }
 
+    // Out-of-order-bescherming: als de payload het providertijdstip meestuurt
+    // (occurredAt), negeer dan een event dat ouder is dan (of gelijk aan) het
+    // laatst verwerkte betaalstatus-event — anders draait een vertraagd
+    // payment_failed een al geboekt payment_succeeded terug. Events zonder
+    // tijdstip (legacy) worden niet geordend en zetten de marker niet.
+    const occurredAt =
+      typeof payload.occurredAt === "string" && !Number.isNaN(Date.parse(payload.occurredAt))
+        ? new Date(payload.occurredAt)
+        : null;
+    if (
+      occurredAt &&
+      sub.lastBillingEventAt &&
+      occurredAt.getTime() <= sub.lastBillingEventAt.getTime()
+    ) {
+      await markeer("genegeerd");
+      return {
+        processed: false,
+        status: "genegeerd",
+        reason: "Ouder betaalstatus-event genegeerd (out-of-order)",
+      };
+    }
+
     const now = new Date();
     if (type === "payment_failed") {
       const graceUntil = addDays(now, GRACE_DAYS);
       await prisma.subscription.update({
         where: { id: sub.id },
-        data: { status: "past_due", graceUntil },
+        data: { status: "past_due", graceUntil, lastBillingEventAt: occurredAt ?? undefined },
       });
       await audit("subscription.payment_failed", "Subscription", sub.id, {
         organizationId,
@@ -665,6 +687,7 @@ export async function processInboundWebhook(
           trialEndsAt: null,
           currentPeriodStart: now,
           currentPeriodEnd: addMonths(now, 1),
+          lastBillingEventAt: occurredAt ?? undefined,
         },
       });
       await audit("subscription.payment_succeeded", "Subscription", sub.id, {

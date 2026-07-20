@@ -10,6 +10,11 @@ import { KENNIS_ARTIKELEN } from "@/public-site/kennis/artikelen";
 import { absoluteUrl } from "@/public-site/seo";
 import type { PublicJobView } from "@/public-site/data/types";
 
+// Integratiefase: de sitemap somt échte vacatures en praktijken op en moet
+// dus per verzoek uit de runtime-databron komen (niet op buildmoment
+// ingebakken worden).
+export const dynamic = "force-dynamic";
+
 /** Alle gepubliceerde vacatures via de gepagineerde adapter-API. */
 async function alleVacatures(): Promise<PublicJobView[]> {
   const bron = getPublicDataSource();

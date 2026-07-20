@@ -14,6 +14,7 @@ import { audit } from "@/lib/audit";
 import { enforceLimit, recordUsage } from "@/lib/billing";
 import { prisma } from "@/lib/db";
 import { sendNotification } from "@/lib/notifications";
+import { INVITATION_TTL_DAYS } from "@/lib/config";
 import { label } from "@/domain/taxonomy";
 import { computeMatchWithOpportunities } from "@/domain/opportunity";
 import { geocodePostcode } from "@/server/geo";
@@ -116,6 +117,8 @@ export async function inviteCandidate(
     },
     select: { id: true },
   });
+  // Geldigheidsvenster: nieuw bij aanmaken en verlengd bij een heruitnodiging.
+  const verlooptOp = new Date(nu.getTime() + INVITATION_TTL_DAYS * 86_400_000);
   const invitation = await prisma.invitation.upsert({
     where: {
       vacancyId_candidateUserId: { vacancyId: vacature.id, candidateUserId },
@@ -125,10 +128,12 @@ export async function inviteCandidate(
       candidateUserId,
       message: message ?? null,
       matchSnapshotId: snapshotId,
+      expiresAt: verlooptOp,
     },
     update: {
       ...(message !== undefined ? { message } : {}),
       matchSnapshotId: snapshotId,
+      expiresAt: verlooptOp,
     },
   });
 
@@ -330,6 +335,16 @@ export async function respondToInvitation(
   if (!uitnodiging) throw new AuthzError("Uitnodiging niet gevonden", 404);
   if (uitnodiging.status !== "sent") {
     throw new AuthzError("Deze uitnodiging is al beantwoord", 409);
+  }
+  // Verlopen uitnodiging: bij het beantwoorden alsnog op "expired" zetten en
+  // weigeren — de geldigheid wordt afgedwongen op het accepteermoment, niet
+  // alleen bij het tonen.
+  if (uitnodiging.expiresAt && uitnodiging.expiresAt.getTime() < Date.now()) {
+    await prisma.invitation.update({
+      where: { id: uitnodiging.id },
+      data: { status: "expired" },
+    });
+    throw new AuthzError("Deze uitnodiging is verlopen", 410);
   }
 
   const bijgewerkt = await prisma.invitation.update({

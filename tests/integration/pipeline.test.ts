@@ -325,3 +325,42 @@ describe("(e) tenantisolatie", () => {
     expect(eigen).toEqual([]);
   });
 });
+
+describe("uitnodiging verloopt", () => {
+  it("zet een geldigheidsdatum (± TTL) bij een nieuwe uitnodiging", async () => {
+    const fred = await maakKandidaat("fred-exp@test.nl", "Fred Fresh", {
+      visibility: "visible",
+    });
+    const ctxA = await ctxVoorOwnerA();
+    const uitnodiging = await inviteCandidate(ctxA, vacatureA.id, fred.user.id);
+
+    expect(uitnodiging.expiresAt).not.toBeNull();
+    const dagen = (uitnodiging.expiresAt!.getTime() - Date.now()) / 86_400_000;
+    expect(dagen).toBeGreaterThan(29);
+    expect(dagen).toBeLessThanOrEqual(30.01);
+  });
+
+  it("weigert het accepteren van een verlopen uitnodiging (410) en zet de status op expired", async () => {
+    const eva = await maakKandidaat("eva-exp@test.nl", "Eva Expired", {
+      visibility: "visible",
+    });
+    const ctxA = await ctxVoorOwnerA();
+    const uitnodiging = await inviteCandidate(ctxA, vacatureA.id, eva.user.id);
+
+    // Forceer verlopen (geldigheid in het verleden).
+    await prisma.invitation.update({
+      where: { id: uitnodiging.id },
+      data: { expiresAt: new Date(Date.now() - 86_400_000) },
+    });
+
+    alsGebruiker(eva.user.id);
+    await expect(
+      respondToInvitation(uitnodiging.id, { accepted: true }),
+    ).rejects.toMatchObject({ status: 410 });
+
+    const na = await prisma.invitation.findUniqueOrThrow({
+      where: { id: uitnodiging.id },
+    });
+    expect(na.status).toBe("expired");
+  });
+});

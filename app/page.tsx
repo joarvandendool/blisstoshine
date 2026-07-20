@@ -25,6 +25,13 @@ export const metadata: Metadata = paginaMetadata({
   pad: "/",
 });
 
+// Integratiefase: de homepage toont échte vacatures en praktijken
+// (DirectDataSource). Zonder deze vlag prerendert Next de pagina op
+// buildmoment en bakt hij de databasestand (én de build-env, dus mogelijk
+// de verkeerde databron) in de HTML — request-time renderen zoals
+// /vacatures houdt de inhoud actueel en de e2e-fixtures deterministisch.
+export const dynamic = "force-dynamic";
+
 /* ------------------------- demonstratiedata stap 1 ------------------------ */
 /* Een kleine, echte WeekGrid-compositie (readonly) die laat zien hoe een
    kandidaat zijn week samenstelt — geen screenshot, het echte component. */
